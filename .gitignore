@@ -1,4 +1,5 @@
 *.pdf
+launch.sh
 
 # Python
 __pycache__/
