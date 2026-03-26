@@ -1,53 +1,134 @@
-# League of Agents：多智能体斗蛐蛐平台
-2023010745 赵睿 计32
+# League of Agents：多智能体游戏博弈平台
 
-### 想解决什么问题
+> 大模型"斗蛐蛐"——在策略游戏中评估和展现AI的推理、博弈与记忆能力。
 
-本项目旨在构建一个名为 **League of Agents** 的多智能体游戏博弈平台，核心解决以下两个层面的痛点：
+## 项目简介
 
-- 面向非专业用户（大众科普与娱乐）：
-  当前的AI评测多为枯燥的静态跑分。本项目希望打造一个“AI斗蛐蛐”的娱乐化视窗。通过让大模型参与骗子酒馆、狼人杀、谁是卧底、你画我猜等大众熟知的游戏，直观且生动地展现大模型在复杂场景下的逻辑推理、策略博弈、长程记忆以及指令遵循等基础智能和Agent能力。
+League of Agents 是一个多智能体游戏博弈平台。它将大模型封装为独立的智能体，让它们在你画我猜、狼人杀、谁是卧底等策略游戏中相互对抗，从而直观地评估模型在复杂动态场景下的逻辑推理、策略博弈、长程记忆和指令遵循能力。
 
-- 面向专业用户（模型训练与评估）：
-  在迈向AGI的路径中，研究者极其缺乏动态的、POMDP的交互沙盒。本项目旨在为研究人员提供一个empirical且qualitative的评估平台。它不仅能测试模型的zero-shot能力，还能作为强化学习的训练环境，支持post-training与对抗策略有哈。
+**面向两类用户：**
 
-### 打算如何利用大模型技术实现
+- **大众科普与娱乐**：告别枯燥的静态跑分，通过游戏对局直观感受不同模型的智能水平差异
+- **模型训练与评估**：提供动态POMDP交互沙盒，支持zero-shot能力测试和强化学习后训练
 
-本系统抛弃了简单的“上下文拼接”式聊天框架，采用全功能的multi-agent模式与系统级调度引擎来实现：
+## 核心架构
 
-1. 独立的agent架构与状态隔离：
-   游戏中的每一个player都是一个独立封装的agent。它们拥有私有的long/short-term memory，系统绝不会向其暴露全局的历史信息。这就要求智能体必须像真人玩家一样，仅基于自身的局部观测和隐藏状态（如底牌、身份）进行推理并做出决策。
+### 三层游戏模型：Game → Round → Step
 
-2. Game Engine与Referee Model的协同调度：
-   - Game Engine作为固定逻辑引擎，底层由Python代码构建核心状态机，负责发牌、回合、胜负判定等强规则逻辑，支持用户自定义的游戏。
-   - Referee Model利用大模型作为裁判，针对“你画我猜”这类答案是自然语言、具有模糊性和多样性的游戏，额外引入一个LLM作为裁判agent。它负责通过语义理解来动态研判玩家的作答是否命中目标。
+所有游戏共享统一的三层结构：
 
-3. Post-training与非语言接口扩展：
-   系统预留了标准化的对战日志记录与反馈接口，支持输出reward对底层大模型进行RL后训练。作为进阶扩展，平台架构将不仅限于自然语言交互，还会暴露出底层的向量化非语言接口，以支持传统的非LLM强化学习policy接入对战，进行训练和评估。
-
-### Demo：多人“你画我猜”
-
-以带有策略博弈性质的多人“你画我猜”为例，展现平台的运作机制：
-
-- 游戏规则：作画者的目标是尽可能让更多的猜词者猜对目标词汇（几人猜对得几分）。但是如果所有人都猜对，则作画者不得分。这要求agent必须精准拿捏信息以进行高阶博弈。
-
-- 游戏流程：
-  1. 作画：作画者接收到目标词后，在内部进行逻辑推理，随后工具调用图片生成模型给出提示。
-  2. 竞猜：多个猜词者结合提示，独立输出自己的猜测。
-  3. 裁决： 游戏引擎接收所有猜测，调用LLM判断哪些答案与目标词一致，随后根据上述博弈规则进行计分结算。
-
-- 核心prompt设计思路 (以作画者为例)：
-```markdown
-你现在是“你画我猜”游戏中的作画者。
-你的目标词汇是：【苹果】。
-当前场上有 4 名其他玩家正在猜词。
-
-【计分规则】：
-- 每有一个人猜对，你获得 1 分。
-- 警告：如果 4 个人全部猜对，你将被判定为“提示过于简单”，本回合获得 0 分！
-
-【你的任务】：
-  请提供提示词并调用图片生成模型给出你画的图片。你需要巧妙地运用你的策略，让这段描述具有一定的门槛或误导性，确保能让聪明的玩家猜出，但又会让至少一名玩家猜错。
-
-请在 <thought> 标签中规划你的信息模糊策略，随后在 <output> 标签中输出你的最终提示。
 ```
+Game（完整游戏，管理多轮）
+├── Round 0（单轮完整流程）
+│   ├── Step 0 [sequential/concurrent] ── 玩家行动
+│   ├── Step 1 ...
+│   └── Step N ── 轮次结束条件满足
+├── Round 1 ...
+└── 游戏结束条件满足 → GameResult
+```
+
+- **Game层**：控制游戏生命周期，循环调度Round直到 `is_game_over()` 返回True，最终汇总 `GameResult`
+- **Round层**：管理单轮流程（角色分配、状态初始化、结算计分），循环执行Step直到 `is_round_over()`
+- **Step层**：最小交互单元，通过模板方法编排子流程：
+
+```
+execute_step()
+  ├→ get_active_players()          # 本step谁需要行动
+  ├→ is_concurrent_step()?
+  │   ├─ True  → query_players_concurrent()   # asyncio.gather 并发，按时间戳排序（抢答）
+  │   └─ False → query_players_sequential()   # 逐个query，后者可见前者动作（讨论）
+  │         每个玩家：build_observation() → agent.act() → validate_action()
+  ├→ apply_actions()               # 批量更新游戏状态
+  └→ step_transition()             # 推进阶段/计数器
+```
+
+### 项目特点
+
+| 特点 | 说明 |
+|------|------|
+| Engine驱动，Agent被动响应 | Push模式——Engine控制流程、分发观测、收集动作；Agent仅实现单一接口 |
+| 严格信息隔离 | 每个Agent只能看到 `build_observation()` 为其构建的 `Observation`，如同真人的局部视角 |
+| 全异步 | 所有Engine和Agent方法均为 `async`，原生支持并发query和实时交互 |
+| 模板方法 + 子方法重写 | `run()` 和 `execute_step()` 提供默认流程骨架，子类只需重写关心的部分 |
+
+## 项目结构
+
+```
+LeagueOfAgents/
+├── league/                    # 核心框架
+│   ├── engine/base.py         # GameEngine 抽象基类（Game→Round→Step）
+│   ├── agent/
+│   │   ├── base.py            # Agent 抽象基类
+│   │   ├── llm_agent.py       # LLM驱动的Agent（含记忆管理）
+│   │   └── memory.py          # 长短期记忆
+│   ├── referee/
+│   │   ├── base.py            # Referee 抽象基类
+│   │   └── llm_referee.py     # LLM语义裁判
+│   ├── llm/client.py          # 统一异步LLM客户端（OpenAI SDK）
+│   ├── logger/game_logger.py  # 对局日志（JSON导出）
+│   └── types.py               # 公共类型定义
+├── games/
+│   └── draw_and_guess/        # 你画我猜实现
+│       ├── engine.py           # 游戏引擎
+│       ├── agents.py           # DrawerAgent / GuesserAgent
+│       ├── referee.py          # 博弈计分裁判
+│       └── prompts.py          # Prompt模板
+├── config/default.yaml        # 默认配置
+├── doc/
+│   ├── architecture.md        # 架构文档
+│   └── api_reference.md       # API参考
+├── main.py                    # CLI入口
+├── pyproject.toml
+└── requirements.txt
+```
+
+## 快速开始
+
+### 1. 环境准备
+
+```bash
+conda create -n league python=3.11 -y
+conda activate league
+pip install -r requirements.txt
+```
+
+### 2. 配置
+
+编辑 `config/default.yaml` 按需调整LLM模型、玩家数量、词库等参数。
+
+### 3. 运行
+
+在 `launch.sh` 中填入你的 API Key，然后：
+
+```bash
+bash launch.sh                      # 使用默认配置
+bash launch.sh config/custom.yaml   # 使用自定义配置
+```
+
+## 自定义新游戏
+
+实现一个新游戏只需三步：
+
+1. **继承 `GameEngine`**：实现 `on_game_start`、`init_round`、`build_observation` 等抽象方法
+2. **定义Agent**（可选）：继承 `LLMAgent` 或直接使用基础实现
+3. **定义Referee**（可选）：需要模糊判定时继承 `LLMReferee`
+
+```python
+class MyGameEngine(GameEngine):
+    async def on_game_start(self) -> None: ...
+    def is_game_over(self) -> bool: ...
+    async def init_round(self, round_num: int) -> None: ...
+    def build_observation(self, player_id: str) -> Observation: ...
+    # ... 实现其余抽象方法
+```
+
+详见 [架构文档](doc/architecture.md) 和 [API参考](doc/api_reference.md)。
+
+## 文档
+
+- [架构文档](doc/architecture.md)：系统设计与模块说明
+- [API参考](doc/api_reference.md)：完整接口定义
+
+## License
+
+MIT

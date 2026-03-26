@@ -1,1 +1,20 @@
 *.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Env
+.env
+*.env
+
+# IDE
+.vscode/
+.claude/
+
+# Logs
+logs/
