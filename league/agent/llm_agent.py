@@ -1,4 +1,4 @@
-"""LLM驱动的Agent实现"""
+"""LLM-driven Agent implementation"""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from league.types import Action, Observation
 
 
 class LLMAgent(Agent):
-    """基于LLM的智能体
+    """LLM-based Agent
 
-    通过LLMClient调用大模型，支持记忆管理和思维链。
+    Uses LLMClient to call Large Language Models, supports memory management and Chain-of-Thought.
     """
 
     def __init__(
@@ -23,13 +23,13 @@ class LLMAgent(Agent):
         system_prompt: str = "",
         memory_capacity: int = 50,
     ) -> None:
-        self.name = name
+        super().__init__(name)
         self.llm_client = llm_client
         self.system_prompt = system_prompt
         self.memory = Memory(short_term_capacity=memory_capacity)
 
     async def act(self, observation: Observation) -> Action:
-        """接收观测，调用LLM生成动作"""
+        """Receive observation and call LLM to generate action"""
         messages = self._build_messages(observation)
         response = await self.llm_client.chat(
             messages=messages,
@@ -39,67 +39,68 @@ class LLMAgent(Agent):
         content = response.strip()
         action = self._parse_response(content, observation)
 
-        self.memory.add(MemoryEntry(
-            content=f"[action] {action.content}",
-            round_num=observation.round_num,
-            step_num=observation.step_num,
-        ))
+        # Record action in memory
+        self.memory.add(
+            MemoryEntry(
+                content=f"Observation: {observation.action_prompt}\nAction: {action.content}",
+                metadata={"round": observation.round_num, "step": observation.step_num},
+            )
+        )
 
         return action
 
     def reset(self) -> None:
-        """重置agent状态"""
+        """Reset agent state"""
         self.memory.clear()
 
     def _build_messages(self, observation: Observation) -> list[dict[str, str]]:
-        """构建LLM消息列表"""
+        """Build message list for LLM"""
         messages: list[dict[str, str]] = []
 
-        # 注入近期记忆
+        # Inject recent memory
         recent = self.memory.get_recent(10)
         if recent:
             memory_text = "\n".join(e.content for e in recent)
-            messages.append({
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"[Past Memory]\n{memory_text}",
+                }
+            )
+
+        # Inject current observation
+        obs_text = f"Current State: {observation.visible_state}\n"
+        if observation.player_role:
+            obs_text += f"Your Role: {observation.player_role}\n"
+        obs_text += f"Task: {observation.action_prompt}"
+
+        messages.append(
+            {
                 "role": "user",
-                "content": f"[历史记忆]\n{memory_text}",
-            })
-            messages.append({
-                "role": "assistant",
-                "content": "好的，我已了解历史信息。",
-            })
+                "content": obs_text,
+            }
+        )
 
-        # 当前观测
-        obs_parts = [
-            f"第 {observation.round_num + 1} 轮，第 {observation.step_num + 1} 步",
-            f"你的角色: {observation.player_role}",
-        ]
-        if observation.visible_state:
-            state_str = "\n".join(
-                f"  {k}: {v}" for k, v in observation.visible_state.items()
-            )
-            obs_parts.append(f"当前状态:\n{state_str}")
-        obs_parts.append(f"\n{observation.action_prompt}")
-
-        if observation.available_actions:
-            obs_parts.append(
-                f"可选动作: {', '.join(observation.available_actions)}"
-            )
-
-        messages.append({"role": "user", "content": "\n".join(obs_parts)})
         return messages
 
     def _parse_response(self, content: str, observation: Observation) -> Action:
-        """解析LLM响应为Action
+        """Parse LLM output, extracting content from <output> tags if present"""
+        # Try to extract content within <output> tags
+        output_match = re.search(r"<output>(.*?)</output>", content, re.DOTALL)
+        if output_match:
+            action_content = output_match.group(1).strip()
+        else:
+            # Fallback: remove <thought> tags if they exist
+            action_content = re.sub(
+                r"<thought>.*?</thought>", "", content, flags=re.DOTALL
+            ).strip()
 
-        支持 <output>...</output> 标签提取。
-        """
-        output_match = re.search(
-            r"<output>(.*?)</output>", content, re.DOTALL
-        )
-        action_content = output_match.group(1).strip() if output_match else content
+        # If still empty, use the original content
+        if not action_content:
+            action_content = content
 
         return Action(
-            action_type=observation.player_role,
+            action_type="speak",
             content=action_content,
             metadata={"raw_response": content},
         )

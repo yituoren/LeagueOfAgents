@@ -1,4 +1,4 @@
-"""Referee 抽象基类"""
+"""Referee Abstract Base Class"""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from league.types import JudgeContext, JudgeResult
 
 
 class Referee(ABC):
-    """裁判抽象基类"""
+    """Abstract Base Class for Referees"""
 
     @abstractmethod
     async def judge(self, context: JudgeContext) -> JudgeResult:
-        """判定（如：语义匹配猜测与答案）"""
-        ...
+        """Judge a set of actions (e.g., semantic matching between guesses and target)"""
+        pass

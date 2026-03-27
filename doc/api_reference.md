@@ -1,103 +1,103 @@
-# League of Agents API 参考文档
+# League of Agents API Reference
 
-## 核心类型 (`league.types`)
+## Core Types (`league.types`)
 
 ### Observation
-玩家观测信息，信息隔离的核心载体。
+Player observation information, the core carrier of information isolation.
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `round_num` | `int` | 当前轮次 |
-| `step_num` | `int` | 当前步骤 |
-| `player_role` | `str` | 玩家角色 |
-| `visible_state` | `dict[str, Any]` | 可见游戏状态 |
-| `action_prompt` | `str` | 动作提示文本 |
-| `available_actions` | `list[str] \| None` | 可选动作列表 |
-| `history` | `list[dict]` | 历史记录 |
+| `round_num` | `int` | Current round number |
+| `step_num` | `int` | Current step number |
+| `player_role` | `str` | Player role |
+| `visible_state` | `dict[str, Any]` | Visible game state |
+| `action_prompt` | `str` | Action prompt text |
+| `available_actions` | `list[str] \| None` | List of available actions |
+| `history` | `list[dict]` | History logs |
 
 ### Action
-玩家动作。
+Player action.
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `action_type` | `str` | 动作类型 |
-| `content` | `str` | 动作内容 |
-| `metadata` | `dict[str, Any]` | 元数据 |
+| `action_type` | `str` | Type of action |
+| `content` | `str` | Content of the action |
+| `metadata` | `dict[str, Any]` | Metadata |
 
 ### PlayerAction
-带玩家ID和时间戳的动作记录。
+Action record with player ID and timestamp.
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `player_id` | `str` | 玩家ID |
-| `action` | `Action` | 动作 |
-| `timestamp` | `float` | 时间戳 |
+| `player_id` | `str` | Player ID |
+| `action` | `Action` | Action object |
+| `timestamp` | `float` | Timestamp |
 
 ### Player
-玩家实例。
+Player instance.
 
-| 字段 | 类型 | 说明 |
+| Field | Type | Description |
 |------|------|------|
-| `player_id` | `str` | 唯一标识 |
-| `name` | `str` | 显示名 |
-| `agent` | `Agent` | 智能体实例 |
-| `role` | `str` | 当前角色 |
-| `score` | `float` | 累计分数 |
+| `player_id` | `str` | Unique identifier |
+| `name` | `str` | Display name |
+| `agent` | `Agent` | Agent instance |
+| `role` | `str` | Current role |
+| `score` | `float` | Cumulative score |
 
 ### GameConfig
-游戏配置。
+Game configuration.
 
-| 字段 | 类型 | 默认值 | 说明 |
+| Field | Type | Default | Description |
 |------|------|--------|------|
-| `num_rounds` | `int` | `1` | 游戏轮数 |
-| `max_steps_per_round` | `int` | `100` | 每轮最大步数 |
-| `timeout_seconds` | `float` | `30.0` | 超时时间 |
-| `extra` | `dict` | `{}` | 额外配置 |
+| `num_rounds` | `int` | `1` | Number of rounds |
+| `max_steps_per_round` | `int` | `100` | Max steps per round |
+| `timeout_seconds` | `float` | `30.0` | Timeout in seconds |
+| `extra` | `dict` | `{}` | Extra configuration |
 
 ### GameResult / RoundResult
-游戏和轮次结果。
+Results for the game and individual rounds.
 
 ### JudgeContext / JudgeResult
-裁判判定的输入和输出。
+Input and output for referee judgment.
 
 ---
 
 ## GameEngine (`league.engine.base`)
 
-游戏引擎抽象基类，实现 Game → Round → Step 三层模板方法。
+Abstract base class for the game engine, implementing the Game → Round → Step three-layer template method.
 
-### 主入口
+### Main Entry
 ```python
 async def run(self, players: list[Player], config: GameConfig) -> GameResult
 ```
 
-### Game层（需实现）
+### Game Layer (Required Implementation)
 ```python
 async def on_game_start(self) -> None
 def is_game_over(self) -> bool
 def get_results(self) -> GameResult
 ```
 
-### Round层（需实现）
+### Round Layer (Required Implementation)
 ```python
 async def init_round(self, round_num: int) -> None
 def is_round_over(self) -> bool
 async def end_round(self, round_num: int) -> None
 ```
 
-### Step层
-模板方法 `execute_step()` 提供默认流程，子方法需实现：
+### Step Layer
+The template method `execute_step()` provides the default flow; sub-methods to implement:
 
 ```python
-def get_active_players(self) -> list[str]          # 谁行动
-def is_concurrent_step(self) -> bool                # 并发还是顺序（默认False）
-def build_observation(self, player_id: str) -> Observation  # 构建观测
-def validate_action(self, player_id: str, action: Action) -> Action  # 验证
-async def apply_actions(self, actions: list[PlayerAction]) -> None   # 应用
-def step_transition(self) -> None                   # 状态转换
+def get_active_players(self) -> list[str]          # Who acts
+def is_concurrent_step(self) -> bool                # Concurrent or sequential (default False)
+def build_observation(self, player_id: str) -> Observation  # Build observation
+def validate_action(self, player_id: str, action: Action) -> Action  # Validate
+async def apply_actions(self, actions: list[PlayerAction]) -> None   # Apply
+def step_transition(self) -> None                   # State transition
 ```
 
-可重写的默认实现：
+Overridable default implementations:
 ```python
 async def query_players_concurrent(self, player_ids) -> list[PlayerAction]
 async def query_players_sequential(self, player_ids) -> list[PlayerAction]
@@ -109,21 +109,21 @@ async def query_players_sequential(self, player_ids) -> list[PlayerAction]
 
 ```python
 class Agent(ABC):
-    async def act(self, observation: Observation) -> Action  # 核心接口
-    def reset(self) -> None                                  # 重置状态
+    async def act(self, observation: Observation) -> Action  # Core interface
+    def reset(self) -> None                                  # Reset state
 ```
 
 ### LLMAgent (`league.agent.llm_agent`)
 
-基于LLM的Agent实现。
+LLM-based Agent implementation.
 
 ```python
 LLMAgent(name, llm_client, system_prompt="", memory_capacity=50)
 ```
 
-- 自动管理对话记忆
-- 支持 `<output>` 标签解析
-- 通过 `system_prompt` 定制行为
+- Automatically manages conversation memory
+- Supports `<output>` tag parsing
+- Customizes behavior via `system_prompt`
 
 ---
 
@@ -131,10 +131,10 @@ LLMAgent(name, llm_client, system_prompt="", memory_capacity=50)
 
 ```python
 memory = Memory(short_term_capacity=50)
-memory.add(entry, long_term=False)      # 添加记忆
-memory.get_recent(n=10)                  # 获取近期记忆
-memory.retrieve(query, top_k=5)          # 检索长期记忆
-memory.clear(long_term=False)            # 清空
+memory.add(entry, long_term=False)      # Add memory
+memory.get_recent(n=10)                  # Get recent memory
+memory.retrieve(query, top_k=5)          # Retrieve long-term memory
+memory.clear(long_term=False)            # Clear memory
 ```
 
 ---
@@ -147,13 +147,13 @@ class Referee(ABC):
 ```
 
 ### LLMReferee (`league.referee.llm_referee`)
-基于LLM的语义判定裁判，适用于自然语言答案的模糊匹配。
+LLM-based semantic judgment referee, suitable for fuzzy matching of natural language answers.
 
 ---
 
 ## LLMClient (`league.llm.client`)
 
-统一异步LLM客户端，基于OpenAI SDK。
+Unified async LLM client, based on the OpenAI SDK.
 
 ```python
 client = LLMClient(model="gpt-4o-mini", base_url=None, temperature=0.7, max_tokens=2048)

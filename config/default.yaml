@@ -1,14 +1,14 @@
-# League of Agents 默认配置
+# League of Agents Default Configuration
 
 llm:
   model: "gpt-4o-mini"
-  base_url: null          # 自定义API地址（如DeepSeek等兼容接口）
+  base_url: null # Custom API address (e.g., DeepSeek or other compatible interfaces)
   temperature: 0.7
   max_tokens: 2048
 
 game:
   name: "draw_and_guess"
-  num_rounds: 4           # 游戏轮数（默认每人当一次作画者）
+  num_rounds: 4 # Number of rounds (defaults to each player being the drawer once)
   max_steps_per_round: 10
   timeout_seconds: 30.0
 
@@ -20,21 +20,21 @@ players:
 
 draw_and_guess:
   word_pool:
-    - "苹果"
-    - "太阳"
-    - "月亮"
-    - "猫"
-    - "飞机"
-    - "雪花"
-    - "吉他"
-    - "城堡"
-    - "彩虹"
-    - "机器人"
-    - "火山"
-    - "钻石"
-    - "蝴蝶"
-    - "望远镜"
-    - "灯塔"
+    - "Apple"
+    - "Sun"
+    - "Moon"
+    - "Cat"
+    - "Airplane"
+    - "Snowflake"
+    - "Guitar"
+    - "Castle"
+    - "Rainbow"
+    - "Robot"
+    - "Volcano"
+    - "Diamond"
+    - "Butterfly"
+    - "Telescope"
+    - "Lighthouse"
 
 logging:
   level: "INFO"

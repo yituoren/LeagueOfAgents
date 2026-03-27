@@ -1,4 +1,4 @@
-"""公共类型定义"""
+"""Common type definitions"""
 
 from __future__ import annotations
 
@@ -9,14 +9,16 @@ from typing import Any
 
 
 class PlayerRole(str, Enum):
-    """玩家角色枚举（游戏可扩展）"""
+    """Player roles enumeration (extensible)"""
+
     DRAWER = "drawer"
     GUESSER = "guesser"
 
 
 @dataclass
 class Observation:
-    """玩家观测信息（信息隔离核心）"""
+    """Player observation information (core of information isolation)"""
+
     round_num: int
     step_num: int
     player_role: str
@@ -28,7 +30,8 @@ class Observation:
 
 @dataclass
 class Action:
-    """玩家动作"""
+    """Player action"""
+
     action_type: str
     content: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -36,7 +39,8 @@ class Action:
 
 @dataclass
 class PlayerAction:
-    """带玩家ID和时间戳的动作记录"""
+    """Action record with player ID and timestamp"""
+
     player_id: str
     action: Action
     timestamp: float = field(default_factory=time.time)
@@ -44,7 +48,8 @@ class PlayerAction:
 
 @dataclass
 class Player:
-    """玩家实例"""
+    """Player instance"""
+
     player_id: str
     name: str
     agent: Any  # Agent instance, avoid circular import
@@ -55,7 +60,8 @@ class Player:
 
 @dataclass
 class GameConfig:
-    """游戏配置"""
+    """Game configuration"""
+
     num_rounds: int = 1
     max_steps_per_round: int = 100
     timeout_seconds: float = 30.0
@@ -64,24 +70,27 @@ class GameConfig:
 
 @dataclass
 class RoundResult:
-    """单轮结果"""
+    """Result of a single round"""
+
     round_num: int
-    scores: dict[str, float] = field(default_factory=dict)
+    scores: dict[str, float]
+    winner_id: str | None = None
     details: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class GameResult:
-    """游戏最终结果"""
-    round_results: list[RoundResult] = field(default_factory=list)
-    final_scores: dict[str, float] = field(default_factory=dict)
-    winner: str | None = None
+    """Final game result"""
+
+    winner_ids: list[str]
+    rankings: list[tuple[str, float]]  # List of (player_id, score)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class JudgeContext:
-    """裁判判定上下文"""
+    """Input for referee judgment"""
+
     round_num: int
     target: str
     actions: list[PlayerAction]
@@ -90,19 +99,20 @@ class JudgeContext:
 
 @dataclass
 class JudgeResult:
-    """裁判判定结果"""
-    correct_players: list[str] = field(default_factory=list)
-    scores: dict[str, float] = field(default_factory=dict)
+    """Output of referee judgment"""
+
+    correct_players: list[str]
+    scores: dict[str, float]
     reasoning: str = ""
-    details: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class LogEvent:
-    """日志事件"""
-    timestamp: float = field(default_factory=time.time)
-    event_type: str = ""
+    """Generic log event"""
+
+    timestamp: float
+    event_type: str
     round_num: int = 0
     step_num: int = 0
-    player_id: str = ""
+    player_id: str | None = None
     data: dict[str, Any] = field(default_factory=dict)

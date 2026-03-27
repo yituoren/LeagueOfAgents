@@ -1,3 +1,3 @@
-"""League of Agents - 多智能体游戏博弈平台"""
+"""League of Agents - A Multi-Agent Gaming Framework"""
 
 __version__ = "0.1.0"

@@ -1,4 +1,4 @@
-"""你画我猜游戏引擎"""
+"""Draw and Guess Game Engine"""
 
 from __future__ import annotations
 
@@ -6,217 +6,222 @@ import logging
 import random
 from enum import Enum
 
+from games.draw_and_guess.prompts import (
+    DRAWER_ACTION_PROMPT,
+    GUESSER_ACTION_PROMPT,
+)
 from league.engine.base import GameEngine
 from league.logger.game_logger import GameLogger
 from league.types import (
     Action,
     GameConfig,
     GameResult,
-    JudgeContext,
     Observation,
     Player,
     PlayerAction,
-    RoundResult,
 )
-from games.draw_and_guess.prompts import DRAWER_ACTION_PROMPT, GUESSER_ACTION_PROMPT
-from games.draw_and_guess.referee import DrawAndGuessReferee
 
 logger = logging.getLogger(__name__)
 
-# 默认词库
+# Default word pool
 DEFAULT_WORDS = [
-    "苹果", "太阳", "月亮", "猫", "飞机",
-    "雪花", "吉他", "城堡", "彩虹", "机器人",
-    "火山", "钻石", "蝴蝶", "望远镜", "灯塔",
+    "Apple",
+    "Sun",
+    "Moon",
+    "Cat",
+    "Airplane",
+    "Snowflake",
+    "Guitar",
+    "Castle",
+    "Rainbow",
+    "Robot",
+    "Volcano",
+    "Diamond",
+    "Butterfly",
+    "Telescope",
+    "Lighthouse",
 ]
 
 
-class RoundPhase(str, Enum):
+class GamePhase(Enum):
+    """Game Phases"""
+
     DRAWING = "drawing"
     GUESSING = "guessing"
-    JUDGING = "judging"
-    FINISHED = "finished"
+    SETTLEMENT = "settlement"
 
 
 class DrawAndGuessEngine(GameEngine):
-    """你画我猜游戏引擎
+    """Draw and Guess Game Engine
 
-    Game: N轮（每人轮流当作画者）
-      Round (玩家X作画):
-        Step 1 [sequential]: query 作画者 -> 返回画作描述
-        Step 2 [concurrent]: query 猜词者 -> 同时猜词
-        Step 3 [engine内部]: referee判定 + 计分
+    Game: N Rounds (Each player takes turns as the Drawer)
+      Round (Player X draws):
+        Step 1 [sequential]: Query Drawer -> Return scene description
+        Step 2 [concurrent]: Query Guessers -> Guess simultaneously
+        Step 3 [internal]: Referee judgment + Scoring
     """
 
-    def __init__(self, referee: DrawAndGuessReferee) -> None:
-        super().__init__()
-        self.referee = referee
-        self.game_logger = GameLogger(game_name="draw_and_guess")
-        self.word_pool: list[str] = list(DEFAULT_WORDS)
-
-        # Round state
-        self.drawer_id: str = ""
-        self.guesser_ids: list[str] = []
-        self.target_word: str = ""
-        self.drawing_description: str = ""
-        self.phase: RoundPhase = RoundPhase.FINISHED
-        self.player_order: list[str] = []
-        self.round_results: list[RoundResult] = []
-
-    # ========== Game 层 ==========
+    def __init__(self, game_logger: GameLogger | None = None) -> None:
+        super().__init__(game_logger)
+        self.word_pool = DEFAULT_WORDS.copy()
+        self.current_drawer_idx = 0
+        self.current_target_word = ""
+        self.current_description = ""
+        self.phase = GamePhase.DRAWING
+        self.round_scores = {}
 
     async def on_game_start(self) -> None:
-        self.player_order = list(self.players.keys())
-        random.shuffle(self.player_order)
-        for p in self.players.values():
-            p.score = 0.0
-            p.agent.reset()
-        self.round_results = []
-        self.game_logger.log_event(
-            "game_start",
-            data={"players": self.player_order},
+        """Initialize game-level state"""
+        config_extra = self.config.extra or {}
+        custom_words = config_extra.get("word_pool", [])
+        if custom_words:
+            self.word_pool = custom_words.copy()
+
+        random.shuffle(self.word_pool)
+        self.current_drawer_idx = 0
+        logger.info(
+            f"Game started with {len(self.players)} players, {self.config.num_rounds} rounds."
         )
 
     def is_game_over(self) -> bool:
+        """Game ends after N rounds"""
         return self.current_round >= self.config.num_rounds
 
     def get_results(self) -> GameResult:
-        final_scores = {pid: p.score for pid, p in self.players.items()}
-        winner = max(final_scores, key=final_scores.get) if final_scores else None  # type: ignore[arg-type]
-        self.game_logger.log_event(
-            "game_end", data={"final_scores": final_scores, "winner": winner}
-        )
+        """Aggregate final rankings"""
+        sorted_players = sorted(self.players, key=lambda p: p.score, reverse=True)
         return GameResult(
-            round_results=self.round_results,
-            final_scores=final_scores,
-            winner=winner,
+            winner_ids=[sorted_players[0].player_id] if sorted_players else [],
+            rankings=[(p.player_id, p.score) for p in sorted_players],
+            metadata={"total_rounds": self.current_round},
         )
-
-    # ========== Round 层 ==========
 
     async def init_round(self, round_num: int) -> None:
-        drawer_idx = round_num % len(self.player_order)
-        self.drawer_id = self.player_order[drawer_idx]
-        self.guesser_ids = [
-            pid for pid in self.player_order if pid != self.drawer_id
-        ]
-        self.target_word = random.choice(self.word_pool)
-        self.drawing_description = ""
-        self.phase = RoundPhase.DRAWING
+        """Initialize round state"""
+        self.phase = GamePhase.DRAWING
+        # Rotate drawer
+        self.current_drawer_idx = round_num % len(self.players)
+        drawer = self.players[self.current_drawer_idx]
 
-        self.game_logger.log_event(
-            "round_start",
-            round_num=round_num,
-            data={
-                "drawer": self.drawer_id,
-                "target_word": self.target_word,
-            },
-        )
+        # Pick a word
+        if not self.word_pool:
+            self.word_pool = DEFAULT_WORDS.copy()
+            random.shuffle(self.word_pool)
+        self.current_target_word = self.word_pool.pop()
+        self.current_description = ""
+        self.round_scores = {p.player_id: 0.0 for p in self.players}
+
+        # Update roles
+        for i, p in enumerate(self.players):
+            p.role = "drawer" if i == self.current_drawer_idx else "guesser"
+
         logger.info(
-            "Round %d: drawer=%s, word=%s",
-            round_num, self.drawer_id, self.target_word,
+            f"Round {round_num} started. Drawer: {drawer.name}, Target: {self.current_target_word}"
         )
 
     def is_round_over(self) -> bool:
-        return self.phase == RoundPhase.FINISHED
+        """Round ends after settlement phase"""
+        return self.phase == GamePhase.SETTLEMENT
 
     async def end_round(self, round_num: int) -> None:
-        self.game_logger.log_event(
-            "round_end",
-            round_num=round_num,
-            data={"phase": self.phase.value},
-        )
-
-    # ========== Step 层 ==========
+        """Clean up round-level state"""
+        logger.info(f"Round {round_num} ended. Scores: {self.round_scores}")
 
     def get_active_players(self) -> list[str]:
-        if self.phase == RoundPhase.DRAWING:
-            return [self.drawer_id]
-        elif self.phase == RoundPhase.GUESSING:
-            return self.guesser_ids
+        """Determine which players act in current step"""
+        if self.phase == GamePhase.DRAWING:
+            # Only the drawer acts
+            return [self.players[self.current_drawer_idx].player_id]
+        elif self.phase == GamePhase.GUESSING:
+            # All guessers act
+            return [
+                p.player_id
+                for i, p in enumerate(self.players)
+                if i != self.current_drawer_idx
+            ]
         return []
 
     def is_concurrent_step(self) -> bool:
-        return self.phase == RoundPhase.GUESSING
+        """Guessers act concurrently; Drawer acts sequentially"""
+        return self.phase == GamePhase.GUESSING
 
     def build_observation(self, player_id: str) -> Observation:
-        if self.phase == RoundPhase.DRAWING:
+        """Build private observation for a specific player"""
+        player = next(p for p in self.players if p.player_id == player_id)
+
+        if self.phase == GamePhase.DRAWING:
+            prompt = DRAWER_ACTION_PROMPT.format(
+                target_word=self.current_target_word, num_guessers=len(self.players) - 1
+            )
             return Observation(
                 round_num=self.current_round,
                 step_num=self.current_step,
                 player_role="drawer",
-                visible_state={"num_guessers": len(self.guesser_ids)},
-                action_prompt=DRAWER_ACTION_PROMPT.format(
-                    target_word=self.target_word,
-                    num_guessers=len(self.guesser_ids),
-                ),
+                visible_state={"phase": "drawing"},
+                action_prompt=prompt,
             )
         else:
+            prompt = GUESSER_ACTION_PROMPT.format(description=self.current_description)
             return Observation(
                 round_num=self.current_round,
                 step_num=self.current_step,
                 player_role="guesser",
-                visible_state={"description": self.drawing_description},
-                action_prompt=GUESSER_ACTION_PROMPT.format(
-                    description=self.drawing_description,
-                ),
+                visible_state={
+                    "phase": "guessing",
+                    "description": self.current_description,
+                },
+                action_prompt=prompt,
             )
 
     def validate_action(self, player_id: str, action: Action) -> Action:
-        if not action.content.strip():
-            action.content = "(empty)"
+        """Basic validation of action content"""
+        if not action.content:
+            action.content = "..."  # Default content to prevent crashes
         return action
 
     async def apply_actions(self, actions: list[PlayerAction]) -> None:
-        if self.phase == RoundPhase.DRAWING:
+        """Update game state based on actions"""
+        if self.phase == GamePhase.DRAWING:
             if actions:
-                self.drawing_description = actions[0].action.content
-                self.game_logger.log_action(
-                    actions[0], self.current_round, self.current_step
+                self.current_description = actions[0].action.content
+                logger.info(
+                    f"Drawer provided description: {self.current_description[:50]}..."
                 )
 
-        elif self.phase == RoundPhase.GUESSING:
-            for a in actions:
-                self.game_logger.log_action(
-                    a, self.current_round, self.current_step
+        elif self.phase == GamePhase.GUESSING:
+            # Process guesses
+            correct_count = 0
+            drawer_id = self.players[self.current_drawer_idx].player_id
+
+            for pa in actions:
+                # Simple exact match (fuzzy matching could be handled by a Referee)
+                is_correct = (
+                    self.current_target_word.lower() in pa.action.content.lower()
                 )
+                if is_correct:
+                    self.round_scores[pa.player_id] = 1.0
+                    self.players_map[pa.player_id].score += 1.0
+                    correct_count += 1
 
-            # 裁判判定
-            judge_ctx = JudgeContext(
-                round_num=self.current_round,
-                target=self.target_word,
-                actions=actions,
-                extra={"drawer_id": self.drawer_id},
-            )
-            result = await self.referee.judge(judge_ctx)
-
-            # 更新分数
-            for pid, score in result.scores.items():
-                if pid in self.players:
-                    self.players[pid].score += score
-
-            self.round_results.append(RoundResult(
-                round_num=self.current_round,
-                scores=result.scores,
-                details={
-                    "target": self.target_word,
-                    "drawer": self.drawer_id,
-                    "correct_players": result.correct_players,
-                    "reasoning": result.reasoning,
-                },
-            ))
-
-            self.game_logger.log_event(
-                "judge_result",
-                round_num=self.current_round,
-                data={
-                    "correct": result.correct_players,
-                    "scores": result.scores,
-                },
-            )
+            # Scoring for Drawer:
+            # 1 point per correct guesser, but 0 if everyone is correct
+            num_guessers = len(self.players) - 1
+            if 0 < correct_count < num_guessers:
+                drawer_score = float(correct_count)
+                self.round_scores[drawer_id] = drawer_score
+                self.players_map[drawer_id].score += drawer_score
+            elif correct_count == num_guessers:
+                # All correct - too easy!
+                self.round_scores[drawer_id] = 0.0
+                logger.info(
+                    f"Drawer {drawer_id} got 0 points because everyone guessed correctly."
+                )
+            else:
+                self.round_scores[drawer_id] = 0.0
 
     def step_transition(self) -> None:
-        if self.phase == RoundPhase.DRAWING:
-            self.phase = RoundPhase.GUESSING
-        elif self.phase == RoundPhase.GUESSING:
-            self.phase = RoundPhase.FINISHED
+        """Advance game phase"""
+        if self.phase == GamePhase.DRAWING:
+            self.phase = GamePhase.GUESSING
+        elif self.phase == GamePhase.GUESSING:
+            self.phase = GamePhase.SETTLEMENT

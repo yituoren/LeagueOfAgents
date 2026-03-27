@@ -1,4 +1,4 @@
-"""League of Agents - CLI入口"""
+"""League of Agents - CLI Entry Point"""
 
 from __future__ import annotations
 
@@ -9,27 +9,30 @@ from pathlib import Path
 
 import yaml
 
-from league.llm.client import LLMClient
-from league.types import GameConfig, Player
 from games.draw_and_guess.agents import DrawerAgent, GuesserAgent
 from games.draw_and_guess.engine import DrawAndGuessEngine
-from games.draw_and_guess.referee import DrawAndGuessReferee
+from league.agent.llm_agent import LLMAgent
+from league.llm.client import LLMClient
+from league.logger.game_logger import GameLogger
+from league.types import GameConfig, Player
 
 
 def load_config(config_path: str = "config/default.yaml") -> dict:
-    """加载配置文件"""
+    """Load configuration file"""
     path = Path(config_path)
     if not path.exists():
         print(f"Config not found: {config_path}, using defaults")
         return {}
-    with open(path, encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
 def setup_logging(config: dict) -> None:
-    """配置日志"""
+    """Configure logging"""
     log_config = config.get("logging", {})
-    level = getattr(logging, log_config.get("level", "INFO"))
+    level_str = log_config.get("level", "INFO").upper()
+    level = getattr(logging, level_str, logging.INFO)
+
     logging.basicConfig(
         level=level,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -38,12 +41,13 @@ def setup_logging(config: dict) -> None:
 
 
 async def run_draw_and_guess(config: dict) -> None:
-    """运行你画我猜游戏"""
+    """Run the Draw and Guess game"""
     llm_config = config.get("llm", {})
-    game_config = config.get("game", {})
-    player_configs = config.get("players", [{"name": f"Player{i}"} for i in range(4)])
+    game_settings = config.get("game", {})
+    player_configs = config.get("players", [])
+    dg_config = config.get("draw_and_guess", {})
 
-    # 创建LLM客户端
+    # Initialize LLM Client
     llm_client = LLMClient(
         model=llm_config.get("model", "gpt-4o-mini"),
         base_url=llm_config.get("base_url"),
@@ -51,75 +55,68 @@ async def run_draw_and_guess(config: dict) -> None:
         max_tokens=llm_config.get("max_tokens", 2048),
     )
 
-    # 创建玩家（每个玩家同时拥有drawer和guesser能力，由engine分配角色）
+    # Initialize Game Logger
+    game_logger = GameLogger(game_name="draw_and_guess")
+
+    # Create Players
     players: list[Player] = []
     for i, pc in enumerate(player_configs):
-        name = pc.get("name", f"Player{i}")
-        pid = f"player_{i}"
-        # 使用GuesserAgent作为默认agent，engine会根据角色发送不同observation
-        agent = GuesserAgent(name=name, llm_client=llm_client)
-        players.append(Player(player_id=pid, name=name, agent=agent))
+        p_name = pc.get("name", f"Player_{i}")
+        # Each player uses a general LLMAgent, specific roles are handled by the engine logic
+        agent = LLMAgent(name=p_name, llm_client=llm_client)
+        players.append(
+            Player(
+                player_id=f"p{i}",
+                name=p_name,
+                agent=agent,
+            )
+        )
 
-    # 创建裁判和引擎
-    referee = DrawAndGuessReferee(llm_client=llm_client)
-    engine = DrawAndGuessEngine(referee=referee)
+    # Initialize Engine
+    engine = DrawAndGuessEngine(game_logger=game_logger)
 
-    # 配置自定义词库
-    dag_config = config.get("draw_and_guess", {})
-    if "word_pool" in dag_config:
-        engine.word_pool = dag_config["word_pool"]
-
-    # 运行游戏
-    num_rounds = game_config.get("num_rounds", len(players))
-    result = await engine.run(
-        players=players,
-        config=GameConfig(
-            num_rounds=num_rounds,
-            max_steps_per_round=game_config.get("max_steps_per_round", 10),
-            timeout_seconds=game_config.get("timeout_seconds", 30.0),
-        ),
+    # Configure Game
+    game_config = GameConfig(
+        num_rounds=game_settings.get("num_rounds", len(players)),
+        max_steps_per_round=game_settings.get("max_steps_per_round", 10),
+        timeout_seconds=game_settings.get("timeout_seconds", 30.0),
+        extra={"word_pool": dg_config.get("word_pool", [])},
     )
 
-    # 输出结果
-    print("\n" + "=" * 50)
-    print("游戏结束！最终得分：")
-    print("=" * 50)
-    for pid, score in sorted(
-        result.final_scores.items(), key=lambda x: x[1], reverse=True
-    ):
-        name = next(
-            (p.name for p in players if p.player_id == pid), pid
-        )
-        print(f"  {name}: {score:.1f} 分")
-    if result.winner:
-        winner_name = next(
-            (p.name for p in players if p.player_id == result.winner),
-            result.winner,
-        )
-        print(f"\n冠军: {winner_name}!")
-    print("=" * 50)
+    print(f"\n{'=' * 20} Game Start: Draw and Guess {'=' * 20}")
+    print(f"Players: {', '.join(p.name for p in players)}")
+    print(f"Total Rounds: {game_config.num_rounds}\n")
 
-    # 导出日志
-    log_dir = config.get("logging", {}).get("output_dir", "logs")
-    Path(log_dir).mkdir(exist_ok=True)
-    log_path = Path(log_dir) / "latest_game.json"
-    engine.game_logger.export(log_path)
-    print(f"\n对局日志已保存至: {log_path}")
+    # Run Game
+    result = await engine.run(players, game_config)
+
+    # Export Logs
+    log_dir = Path(config.get("logging", {}).get("output_dir", "logs"))
+    log_file = log_dir / f"game_{int(asyncio.get_event_loop().time())}.json"
+    game_logger.export(log_file)
+
+    print(f"\n{'=' * 20} Game Over {'=' * 20}")
+    print("Final Rankings:")
+    for i, (pid, score) in enumerate(result.rankings):
+        p_name = next(p.name for p in players if p.player_id == pid)
+        print(f"{i + 1}. {p_name}: {score} points")
+    print(f"\nDetailed logs saved to: {log_file}")
 
 
-def main() -> None:
-    """CLI主入口"""
+async def main() -> None:
     config_path = sys.argv[1] if len(sys.argv) > 1 else "config/default.yaml"
     config = load_config(config_path)
     setup_logging(config)
 
-    print("=" * 50)
-    print("  League of Agents - 多智能体游戏博弈平台")
-    print("=" * 50)
-    print("\n启动游戏: 你画我猜\n")
-
-    asyncio.run(run_draw_and_guess(config))
+    game_name = config.get("game", {}).get("name", "draw_and_guess")
+    if game_name == "draw_and_guess":
+        await run_draw_and_guess(config)
+    else:
+        print(f"Unsupported game type: {game_name}")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nGame terminated by user.")

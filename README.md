@@ -1,134 +1,104 @@
-# League of Agents：多智能体游戏博弈平台
+# League of Agents: A Multi-Agent Gaming Framework
 
-> 大模型"斗蛐蛐"——在策略游戏中评估和展现AI的推理、博弈与记忆能力。
+> LLM "Gladiator Arena" — evaluating and showcasing AI's reasoning, game theory, and memory capabilities through strategic games.
 
-## 项目简介
+## Project Introduction
 
-League of Agents 是一个多智能体游戏博弈平台。它将大模型封装为独立的智能体，让它们在你画我猜、狼人杀、谁是卧底等策略游戏中相互对抗，从而直观地评估模型在复杂动态场景下的逻辑推理、策略博弈、长程记忆和指令遵循能力。
+League of Agents is a multi-agent gaming framework. It encapsulates Large Language Models (LLMs) into independent agents and lets them compete in strategic games like Draw and Guess, Werewolf, and Undercover. This provides an intuitive way to evaluate models' logical reasoning, strategic play, long-term memory, and instruction-following abilities in complex, dynamic scenarios.
 
-**面向两类用户：**
+**Targeted at two types of users:**
 
-- **大众科普与娱乐**：告别枯燥的静态跑分，通过游戏对局直观感受不同模型的智能水平差异
-- **模型训练与评估**：提供动态POMDP交互沙盒，支持zero-shot能力测试和强化学习后训练
+- **General Public & Enthusiasts**: Move beyond dry static benchmarks and experience the intelligence differences between models through live game matches.
+- **Model Training & Evaluation**: Provides a dynamic POMDP (Partially Observable Markov Decision Process) interaction sandbox, supporting zero-shot capability testing and reinforcement learning post-training.
 
-## 核心架构
+## Core Architecture
 
-### 三层游戏模型：Game → Round → Step
+### Three-Layer Game Model: Game → Round → Step
 
-所有游戏共享统一的三层结构：
+All games share a unified three-layer structure:
 
 ```
-Game（完整游戏，管理多轮）
-├── Round 0（单轮完整流程）
-│   ├── Step 0 [sequential/concurrent] ── 玩家行动
+Game (Full game, manages multiple rounds)
+├── Round 0 (Single round complete process)
+│   ├── Step 0 [sequential/concurrent] ── Player actions
 │   ├── Step 1 ...
-│   └── Step N ── 轮次结束条件满足
+│   └── Step N ── Round end condition met
 ├── Round 1 ...
-└── 游戏结束条件满足 → GameResult
+└── Game end condition met → GameResult
 ```
 
-- **Game层**：控制游戏生命周期，循环调度Round直到 `is_game_over()` 返回True，最终汇总 `GameResult`
-- **Round层**：管理单轮流程（角色分配、状态初始化、结算计分），循环执行Step直到 `is_round_over()`
-- **Step层**：最小交互单元，通过模板方法编排子流程：
+- **Game Layer**: Controls the game lifecycle, schedules Rounds in a loop until `is_game_over()` returns True, and finally aggregates the `GameResult`.
+- **Round Layer**: Manages the single-round flow (role assignment, state initialization, scoring), executing Steps in a loop until `is_round_over()`.
+- **Step Layer**: The smallest unit of interaction, orchestrating sub-processes via template methods:
 
 ```
 execute_step()
-  ├→ get_active_players()          # 本step谁需要行动
+  ├→ get_active_players()          # Who needs to act in this step
   ├→ is_concurrent_step()?
-  │   ├─ True  → query_players_concurrent()   # asyncio.gather 并发，按时间戳排序（抢答）
-  │   └─ False → query_players_sequential()   # 逐个query，后者可见前者动作（讨论）
-  │         每个玩家：build_observation() → agent.act() → validate_action()
-  ├→ apply_actions()               # 批量更新游戏状态
-  └→ step_transition()             # 推进阶段/计数器
+  │   ├─ True  → query_players_concurrent()   # asyncio.gather concurrent, sorted by timestamp
+  │   └─ False → query_players_sequential()   # Sequential queries, later players see earlier actions
+  │         Each player: build_observation() → agent.act() → validate_action()
+  ├→ apply_actions()               # Batch update game state
+  └→ step_transition()             # Advance phase/counters
 ```
 
-### 项目特点
+### Project Features
 
-| 特点 | 说明 |
+| Feature | Description |
 |------|------|
-| Engine驱动，Agent被动响应 | Push模式——Engine控制流程、分发观测、收集动作；Agent仅实现单一接口 |
-| 严格信息隔离 | 每个Agent只能看到 `build_observation()` 为其构建的 `Observation`，如同真人的局部视角 |
-| 全异步 | 所有Engine和Agent方法均为 `async`，原生支持并发query和实时交互 |
-| 模板方法 + 子方法重写 | `run()` 和 `execute_step()` 提供默认流程骨架，子类只需重写关心的部分 |
+| Engine-Driven, Agent Passive | Push Mode — Engine controls flow, distributes observations, and collects actions; Agent only implements a single interface. |
+| Strict Information Isolation | Each Agent only sees the `Observation` built for it by `build_observation()`, mimicking a human's partial perspective. |
+| Fully Asynchronous | All Engine and Agent methods are `async`, natively supporting concurrent queries and real-time interaction. |
+| Template Method + Sub-method Overriding | `run()` and `execute_step()` provide default flow skeletons; subclasses only need to override parts they care about. |
 
-## 项目结构
+## Project Structure
 
 ```
 LeagueOfAgents/
-├── league/                    # 核心框架
-│   ├── engine/base.py         # GameEngine 抽象基类（Game→Round→Step）
+├── league/                    # Core Framework
+│   ├── engine/base.py         # GameEngine abstract base class (Game→Round→Step)
 │   ├── agent/
-│   │   ├── base.py            # Agent 抽象基类
-│   │   ├── llm_agent.py       # LLM驱动的Agent（含记忆管理）
-│   │   └── memory.py          # 长短期记忆
+│   │   ├── base.py            # Agent abstract base class
+│   │   ├── llm_agent.py       # LLM-driven Agent (with memory management)
+│   │   └── memory.py          # Short and long-term memory
 │   ├── referee/
-│   │   ├── base.py            # Referee 抽象基类
-│   │   └── llm_referee.py     # LLM语义裁判
-│   ├── llm/client.py          # 统一异步LLM客户端（OpenAI SDK）
-│   ├── logger/game_logger.py  # 对局日志（JSON导出）
-│   └── types.py               # 公共类型定义
+│   │   ├── base.py            # Referee abstract base class
+│   │   └── llm_referee.py     # LLM semantic referee
+│   ├── llm/client.py          # Unified async LLM client (OpenAI SDK)
+│   ├── logger/game_logger.py  # Game logs (JSON export)
+│   └── types.py               # Common type definitions
 ├── games/
-│   └── draw_and_guess/        # 你画我猜实现
-│       ├── engine.py           # 游戏引擎
+│   └── draw_and_guess/        # Draw and Guess implementation
+│       ├── engine.py           # Game engine
 │       ├── agents.py           # DrawerAgent / GuesserAgent
-│       ├── referee.py          # 博弈计分裁判
-│       └── prompts.py          # Prompt模板
-├── config/default.yaml        # 默认配置
+│       ├── referee.py          # Game scoring referee
+│       └── prompts.py          # Prompt templates
+├── config/default.yaml        # Default configuration
 ├── doc/
-│   ├── architecture.md        # 架构文档
-│   └── api_reference.md       # API参考
-├── main.py                    # CLI入口
+│   ├── architecture.md        # Architecture documentation
+│   └── api_reference.md       # API reference
+├── main.py                    # CLI entry point
 ├── pyproject.toml
 └── requirements.txt
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 环境准备
+### 1. Environment Preparation
 
 ```bash
-conda create -n league python=3.11 -y
-conda activate league
 pip install -r requirements.txt
 ```
 
-### 2. 配置
+### 2. Configuration
 
-编辑 `config/default.yaml` 按需调整LLM模型、玩家数量、词库等参数。
+Edit `config/default.yaml` to adjust parameters like LLM models, number of players, and word pools as needed.
 
-### 3. 运行
+### 3. Run
 
-在 `launch.sh` 中填入你的 API Key，然后：
+Fill in your API Key in `launch.sh`, then:
 
 ```bash
-bash launch.sh                      # 使用默认配置
-bash launch.sh config/custom.yaml   # 使用自定义配置
+bash launch.sh                      # Use default config
+bash launch.sh config/custom.yaml   # Use custom config
 ```
-
-## 自定义新游戏
-
-实现一个新游戏只需三步：
-
-1. **继承 `GameEngine`**：实现 `on_game_start`、`init_round`、`build_observation` 等抽象方法
-2. **定义Agent**（可选）：继承 `LLMAgent` 或直接使用基础实现
-3. **定义Referee**（可选）：需要模糊判定时继承 `LLMReferee`
-
-```python
-class MyGameEngine(GameEngine):
-    async def on_game_start(self) -> None: ...
-    def is_game_over(self) -> bool: ...
-    async def init_round(self, round_num: int) -> None: ...
-    def build_observation(self, player_id: str) -> Observation: ...
-    # ... 实现其余抽象方法
-```
-
-详见 [架构文档](doc/architecture.md) 和 [API参考](doc/api_reference.md)。
-
-## 文档
-
-- [架构文档](doc/architecture.md)：系统设计与模块说明
-- [API参考](doc/api_reference.md)：完整接口定义
-
-## License
-
-MIT

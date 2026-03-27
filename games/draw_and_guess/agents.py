@@ -1,14 +1,14 @@
-"""你画我猜专用Agent"""
+"""Specialized Agents for Draw and Guess"""
 
 from __future__ import annotations
 
+from games.draw_and_guess.prompts import DRAWER_SYSTEM_PROMPT, GUESSER_SYSTEM_PROMPT
 from league.agent.llm_agent import LLMAgent
 from league.llm.client import LLMClient
-from games.draw_and_guess.prompts import DRAWER_SYSTEM_PROMPT, GUESSER_SYSTEM_PROMPT
 
 
 class DrawerAgent(LLMAgent):
-    """作画者Agent"""
+    """Drawer Agent"""
 
     def __init__(self, name: str, llm_client: LLMClient) -> None:
         super().__init__(
@@ -19,7 +19,7 @@ class DrawerAgent(LLMAgent):
 
 
 class GuesserAgent(LLMAgent):
-    """猜词者Agent"""
+    """Guesser Agent"""
 
     def __init__(self, name: str, llm_client: LLMClient) -> None:
         super().__init__(

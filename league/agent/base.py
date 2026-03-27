@@ -1,4 +1,4 @@
-"""Agent 抽象基类"""
+"""Agent Abstract Base Class"""
 
 from __future__ import annotations
 
@@ -8,17 +8,19 @@ from league.types import Action, Observation
 
 
 class Agent(ABC):
-    """智能体抽象基类
+    """Abstract Base Class for Agents
 
-    Engine驱动，Agent被动响应（Push模式）
+    Engine-driven, Agent passive response (Push mode).
     """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
 
     @abstractmethod
     async def act(self, observation: Observation) -> Action:
-        """唯一交互入口：接收观测，返回动作"""
-        ...
+        """Core interface: Decide on an action based on current observation"""
+        pass
 
-    @abstractmethod
     def reset(self) -> None:
-        """重置agent状态（新游戏开始时调用）"""
-        ...
+        """Reset agent state (e.g., clear memory)"""
+        pass
