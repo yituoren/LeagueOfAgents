@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import mimetypes
 import re
+from pathlib import Path
 from typing import Any
 
 from league.agent.base import Agent
@@ -49,15 +52,12 @@ class LLMAgent(Agent):
             )
             content = response.strip()
         else:
-            content, tool_results = await self._act_with_tools(messages)
+            content = await self._act_with_tools(messages)
 
         action = self._parse_response(content, observation)
 
         # Extract and save <memory> tags (agent-controlled)
         self._extract_and_save_memories(content, observation)
-
-        if self.tools and tool_results:
-            action.metadata["tool_results"] = tool_results
 
         return action
 
@@ -78,10 +78,9 @@ class LLMAgent(Agent):
 
     async def _act_with_tools(
         self, messages: list[dict[str, Any]]
-    ) -> tuple[str, list[dict[str, Any]]]:
+    ) -> str:
         """Run tool calling loop until LLM produces a final text response"""
         tool_schemas = [t.to_openai_schema() for t in self.tools]
-        tool_results: list[dict[str, Any]] = []
 
         while True:
             result = await self.llm_client.chat_with_tools(
@@ -92,25 +91,30 @@ class LLMAgent(Agent):
 
             tool_calls = result.get("tool_calls")
             if not tool_calls:
-                return result.get("content", "") or "", tool_results
+                return result.get("content", "") or ""
 
-            # Append assistant message with tool calls
-            assistant_msg: dict[str, Any] = {
-                "role": "assistant",
-                "content": result.get("content") or "",
-                "tool_calls": [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in tool_calls
-                ],
-            }
-            messages.append(assistant_msg)
+            # Append the raw assistant message to preserve provider-specific
+            # fields (e.g., Gemini's thought_signature required for tool call continuations)
+            raw_msg = result.get("raw_message")
+            if raw_msg:
+                messages.append(raw_msg)
+            else:
+                # Fallback: reconstruct manually
+                messages.append({
+                    "role": "assistant",
+                    "content": result.get("content") or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in tool_calls
+                    ],
+                })
 
             # Execute each tool call and append results
             for tc in tool_calls:
@@ -121,14 +125,6 @@ class LLMAgent(Agent):
                     except json.JSONDecodeError:
                         kwargs = {}
                     tr = await tool.execute(**kwargs)
-                    tool_results.append(
-                        {
-                            "tool_name": tc.function.name,
-                            "arguments": kwargs,
-                            "result": tr.content,
-                            "metadata": tr.metadata,
-                        }
-                    )
                     messages.append(
                         {
                             "role": "tool",
@@ -200,14 +196,62 @@ class LLMAgent(Agent):
             obs_text += f"Your Role: {observation.player_role}\n"
         obs_text += f"Task: {observation.action_prompt}"
 
-        messages.append(
-            {
-                "role": "user",
-                "content": obs_text,
-            }
-        )
+        image_part = self._build_image_part(observation)
+        if image_part:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": obs_text},
+                        image_part,
+                    ],
+                }
+            )
+        else:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": obs_text,
+                }
+            )
 
         return messages
+
+    def _build_image_part(self, observation: Observation) -> dict[str, Any] | None:
+        """Attach image clue as a multimodal input when available."""
+        image_path = observation.visible_state.get("image_url")
+        if not image_path:
+            return None
+
+        data_url = self._image_path_to_data_url(str(image_path))
+        if not data_url:
+            return None
+
+        return {
+            "type": "image_url",
+            "image_url": {"url": data_url},
+        }
+
+    @staticmethod
+    def _image_path_to_data_url(image_path: str) -> str | None:
+        """Convert local image path into a data URL for multimodal chat APIs."""
+        try:
+            path = Path(image_path)
+            if not path.is_absolute():
+                path = Path.cwd() / path
+            if not path.exists() or not path.is_file():
+                logger.warning(f"Image clue path not found: {path}")
+                return None
+
+            mime_type, _ = mimetypes.guess_type(path.name)
+            if mime_type is None:
+                mime_type = "image/jpeg"
+
+            encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+            return f"data:{mime_type};base64,{encoded}"
+        except OSError as e:
+            logger.warning(f"Failed to read image clue '{image_path}': {e}")
+            return None
 
     # ========== Response Parsing ==========
 

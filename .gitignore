@@ -17,5 +17,6 @@ build/
 
 # Logs
 logs/
+outputs/
 
 *.pdf

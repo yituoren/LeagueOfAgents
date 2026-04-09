@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from league.logger.game_logger import GameLogger
 from league.types import (
@@ -15,6 +16,9 @@ from league.types import (
     Player,
     PlayerAction,
 )
+
+if TYPE_CHECKING:
+    from league.referee.llm_referee import LLMReferee
 
 
 class GameEngine(ABC):
@@ -31,6 +35,7 @@ class GameEngine(ABC):
         self.players_map: dict[str, Player] = {}
         self.config: GameConfig = GameConfig()
         self.game_logger = game_logger
+        self.referee: LLMReferee | None = None
         self.current_round: int = 0
         self.current_step: int = 0
 

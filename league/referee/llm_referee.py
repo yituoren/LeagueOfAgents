@@ -7,25 +7,11 @@ import logging
 import re
 
 from league.llm.client import LLMClient
-from league.prompts.referee import REFEREE_BASE_PROMPT
+from league.prompts.referee import REFEREE_JUDGE_SYSTEM_PROMPT
 from league.referee.base import Referee
 from league.types import JudgeContext, JudgeResult
 
 logger = logging.getLogger(__name__)
-
-JUDGE_GAME_PROMPT = """\
-You need to determine if each player's answer is correct based on the given target answer.
-Judgment Rule: Any response that is semantically consistent with the target is considered correct (synonyms and near-synonymous expressions are acceptable).
-
-Return your judgment in <output> tags as JSON:
-{
-  "judgements": [
-    {"player_id": "...", "correct": true/false, "reason": "..."}
-  ]
-}
-"""
-
-JUDGE_SYSTEM_PROMPT = f"{REFEREE_BASE_PROMPT}\n---\n\n{JUDGE_GAME_PROMPT}"
 
 
 class LLMReferee(Referee):
@@ -51,7 +37,7 @@ class LLMReferee(Referee):
 
         response = await self.llm_client.chat(
             messages=[{"role": "user", "content": prompt}],
-            system=JUDGE_SYSTEM_PROMPT,
+            system=REFEREE_JUDGE_SYSTEM_PROMPT,
         )
 
         # Extract <output> content if present

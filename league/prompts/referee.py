@@ -22,3 +22,19 @@ Your final judgment. Follow the output format specified by the game rules exactl
 3. When answers are ambiguous, lean toward semantic correctness: synonyms and reasonable rephrasings should count as correct unless the game rules explicitly forbid them.
 4. If a player's response is borderline, explain your reasoning in <thought> before deciding.
 """
+
+REFEREE_JUDGE_GAME_PROMPT = """\
+You need to determine if each player's answer is correct based on the given target answer.
+Judgment Rule: Any response that is semantically consistent with the target is considered correct (synonyms and near-synonymous expressions are acceptable).
+
+Return your judgment in <output> tags as JSON:
+{
+  "judgements": [
+    {"player_id": "...", "correct": true/false, "reason": "..."}
+  ]
+}
+"""
+
+REFEREE_JUDGE_SYSTEM_PROMPT = (
+    f"{REFEREE_BASE_PROMPT}\n---\n\n{REFEREE_JUDGE_GAME_PROMPT}"
+)

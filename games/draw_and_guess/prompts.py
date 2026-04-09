@@ -37,9 +37,12 @@ There are currently {num_guessers} guessers in the game.
 
 [Scoring Rules]:
 - You get 1 point for each person who guesses correctly.
-- Warning: If everyone guesses correctly, you receive 0 points for this round!
+- Warning: If everyone guesses correctly, you receive 0 points for this round! So do not provide starightforward clues or descriptions.
 
-Provide your clue in <output>. If the generate_image tool is available, use it first.
+If the generate_image tool is available, you can use it to create visual clues. If you successfully generate an image, you should not provide any text clues or descriptions in your <output>.
+
+In your <output>, include:
+1. The file path of your chosen image on a separate line, wrapped as: [image: path/to/file.jpeg]
 """
 
 GUESSER_ACTION_PROMPT = """\
@@ -48,4 +51,22 @@ The Drawer provided the following clues:
 {description}
 {image_info}
 Guess the target word. Provide only your answer in <output>.
+"""
+
+REFEREE_TARGET_SELECTION_PROMPT = """\
+You are responsible for selecting this round's target word for a Draw-and-Guess game.
+
+Rules:
+1. You MUST invent exactly one target word suitable for a drawing game.
+2. Prefer concrete everyday objects/animals/scenes that can be drawn.
+3. Keep it short: one word preferred, max two words.
+4. Avoid proper nouns, brand names, or very obscure terms.
+5. Do NOT choose overly obvious words (e.g., ultra-basic items with near-zero ambiguity).
+6. Prefer words that allow plausible visual confusion with nearby concepts, so guesses are not all identical.
+7. The chosen word should create discriminative outcomes: some players may guess correctly, others may miss.
+8. If the prompt provides previously used targets, you MUST NOT reuse any of them.
+9. Return only JSON inside <output> tags:
+{
+  "target": "..."
+}
 """

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 from enum import Enum
 
 from games.draw_and_guess.prompts import (
@@ -16,6 +17,7 @@ from league.types import (
     Action,
     GameConfig,
     GameResult,
+    JudgeContext,
     Observation,
     Player,
     PlayerAction,
@@ -61,9 +63,11 @@ class DrawAndGuessEngine(GameEngine):
         Step 3 [internal]: Referee judgment + Scoring
     """
 
-    def __init__(self, game_logger: GameLogger | None = None) -> None:
+    def __init__(
+        self,
+        game_logger: GameLogger | None = None,
+    ) -> None:
         super().__init__(game_logger)
-        self.word_pool = DEFAULT_WORDS.copy()
         self.current_drawer_idx = 0
         self.current_target_word = ""
         self.current_description = ""
@@ -73,13 +77,9 @@ class DrawAndGuessEngine(GameEngine):
 
     async def on_game_start(self) -> None:
         """Initialize game-level state"""
-        config_extra = self.config.extra or {}
-        custom_words = config_extra.get("word_pool", [])
-        if custom_words:
-            self.word_pool = custom_words.copy()
-
-        random.shuffle(self.word_pool)
         self.current_drawer_idx = 0
+        if self.referee and hasattr(self.referee, "reset_target_history"):
+            self.referee.reset_target_history()
         logger.info(
             f"Game started with {len(self.players)} players, {self.config.num_rounds} rounds."
         )
@@ -105,10 +105,14 @@ class DrawAndGuessEngine(GameEngine):
         drawer = self.players[self.current_drawer_idx]
 
         # Pick a word
-        if not self.word_pool:
-            self.word_pool = DEFAULT_WORDS.copy()
-            random.shuffle(self.word_pool)
-        self.current_target_word = self.word_pool.pop()
+        if self.referee:
+            selected = await self.referee.choose_target(
+                round_num=round_num,
+                drawer_name=drawer.name,
+            )
+            self.current_target_word = selected
+        else:
+            self.current_target_word = random.choice(DEFAULT_WORDS)
         self.current_description = ""
         self.current_image_url = ""
         self.round_scores = {p.player_id: 0.0 for p in self.players}
@@ -194,15 +198,18 @@ class DrawAndGuessEngine(GameEngine):
         """Update game state based on actions"""
         if self.phase == GamePhase.DRAWING:
             if actions:
-                self.current_description = actions[0].action.content
+                output = actions[0].action.content
 
-                # Extract image URL from tool results if available
-                tool_results = actions[0].action.metadata.get("tool_results", [])
-                for tr in tool_results:
-                    image_url = tr.get("metadata", {}).get("image_url")
-                    if image_url:
-                        self.current_image_url = image_url
-                        break
+                # Extract image path from drawer's output: [image: path/to/file]
+                image_match = re.search(r"\[image:\s*(.+?)\]", output)
+                if image_match:
+                    self.current_image_url = image_match.group(1).strip()
+                    # Remove the image tag from description shown to guessers
+                    self.current_description = re.sub(
+                        r"\[image:\s*.+?\]\s*", "", output
+                    ).strip()
+                else:
+                    self.current_description = output
 
                 logger.info(
                     f"Drawer provided description: {self.current_description[:50]}..."
@@ -212,34 +219,52 @@ class DrawAndGuessEngine(GameEngine):
 
         elif self.phase == GamePhase.GUESSING:
             # Process guesses
-            correct_count = 0
             drawer_id = self.players[self.current_drawer_idx].player_id
-
-            for pa in actions:
-                # Simple exact match (fuzzy matching could be handled by a Referee)
-                is_correct = (
-                    self.current_target_word.lower() in pa.action.content.lower()
+            if self.referee:
+                judge_result = await self.referee.judge(
+                    JudgeContext(
+                        round_num=self.current_round,
+                        target=self.current_target_word,
+                        actions=actions,
+                        extra={
+                            "drawer_id": drawer_id,
+                            "description": self.current_description,
+                            "image_url": self.current_image_url,
+                        },
+                    )
                 )
-                if is_correct:
-                    self.round_scores[pa.player_id] = 1.0
-                    self.players_map[pa.player_id].score += 1.0
-                    correct_count += 1
 
-            # Scoring for Drawer:
-            # 1 point per correct guesser, but 0 if everyone is correct
-            num_guessers = len(self.players) - 1
-            if 0 < correct_count < num_guessers:
-                drawer_score = float(correct_count)
-                self.round_scores[drawer_id] = drawer_score
-                self.players_map[drawer_id].score += drawer_score
-            elif correct_count == num_guessers:
-                # All correct - too easy!
-                self.round_scores[drawer_id] = 0.0
-                logger.info(
-                    f"Drawer {drawer_id} got 0 points because everyone guessed correctly."
-                )
+                for pid in self.round_scores:
+                    score = float(judge_result.scores.get(pid, 0.0))
+                    self.round_scores[pid] = score
+                    self.players_map[pid].score += score
+
+                if judge_result.reasoning:
+                    logger.info(f"Referee judgment: {judge_result.reasoning}")
             else:
-                self.round_scores[drawer_id] = 0.0
+                correct_count = 0
+                for pa in actions:
+                    is_correct = (
+                        self.current_target_word.lower() in pa.action.content.lower()
+                    )
+                    if is_correct:
+                        self.round_scores[pa.player_id] = 1.0
+                        self.players_map[pa.player_id].score += 1.0
+                        correct_count += 1
+
+                # 1 point per correct guesser, but 0 if everyone is correct
+                num_guessers = len(self.players) - 1
+                if 0 < correct_count < num_guessers:
+                    drawer_score = float(correct_count)
+                    self.round_scores[drawer_id] = drawer_score
+                    self.players_map[drawer_id].score += drawer_score
+                elif correct_count == num_guessers:
+                    self.round_scores[drawer_id] = 0.0
+                    logger.info(
+                        f"Drawer {drawer_id} got 0 points because everyone guessed correctly."
+                    )
+                else:
+                    self.round_scores[drawer_id] = 0.0
 
     def step_transition(self) -> None:
         """Advance game phase"""

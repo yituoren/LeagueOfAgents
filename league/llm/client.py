@@ -75,9 +75,13 @@ class LLMClient:
                 temperature=temperature or self.temperature,
             )
             message = response.choices[0].message
+            # Preserve the full raw message dict (includes provider-specific
+            # fields like Gemini's thought_signature) for conversation history
+            raw_message = message.model_dump(exclude_none=True)
             return {
                 "content": message.content,
                 "tool_calls": message.tool_calls,
+                "raw_message": raw_message,
             }
         except Exception as e:
             logger.error(f"LLM Tool Chat Error: {e}")

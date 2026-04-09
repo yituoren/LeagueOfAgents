@@ -1,41 +1,47 @@
 # League of Agents Default Configuration
+# Top level: llm, game, logging
 
-# Global LLM config (used as default for all players)
+# Global LLM config (default for all players and referee)
 llm:
-  model: "gemini-2.5-flash-lite"
+  model: "gemini-2.5-pro"
   base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
   # api_key loaded from .env (LLM_API_KEY)
   temperature: 0.7
   max_tokens: 2048
 
+# Game configuration — everything game-specific lives here
 game:
-  name: "draw_and_guess"
-  num_rounds: 2
+  target: "games.draw_and_guess" # module path → auto-resolves GameEngine
+  num_rounds: 4
   max_steps_per_round: 10
   timeout_seconds: 60.0
 
-# Each player can override global llm config with its own llm section
-players:
-  - name: "Alice"
-  - name: "Bob"
-  - name: "Charlie"
+  players:
+    - name: "Alice"
+    - name: "Bob"
+    - name: "Charlie"
+      llm:
+        model: "gemini-3.1-flash-lite-preview"
+    - name: "Diana"
+      llm:
+        model: "gemini-3.1-flash-lite-preview"
+    # Per-player LLM override example:
+    # - name: "Diana"
+    #   llm:
+    #     model: "gpt-4o-mini"
+    #     base_url: null
 
-# Tool configurations (image_generation disabled for now — no endpoint available)
-tools: {}
+  tools:
+    - target: "games.draw_and_guess.tools:ImageGenerationTool"
+      params:
+        model: "imagen-4.0-fast-generate-001"
+        base_url: "https://generativelanguage.googleapis.com/"
+        # api_key resolved from: params > IMAGE_GEN_API_KEY > LLM_API_KEY
 
-# Game-specific settings
-draw_and_guess:
-  word_pool:
-    - "Apple"
-    - "Sun"
-    - "Moon"
-    - "Cat"
-    - "Guitar"
-    - "Castle"
-    - "Rainbow"
-    - "Robot"
-    - "Butterfly"
-    - "Lighthouse"
+  referee:
+    target: "games.draw_and_guess.referee:DrawAndGuessReferee"
+    llm:
+      temperature: 1.0
 
 logging:
   level: "INFO"

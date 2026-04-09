@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
+import uuid
 from typing import Any
 
-from openai import AsyncOpenAI
+from google import genai
+from google.genai import types
 
 from league.tools.base import Tool, ToolResult
 
@@ -15,13 +18,13 @@ logger = logging.getLogger(__name__)
 class ImageGenerationTool(Tool):
     """Text-to-image generation tool
 
-    Uses OpenAI-compatible image generation API.
-    Default model: nano-banana.
+    Uses official Gemini image generation API.
+    Default model: imagen-3.0-generate-002.
     """
 
     def __init__(
         self,
-        model: str = "nano-banana",
+        model: str = "imagen-4.0-fast-generate-001",
         base_url: str | None = None,
         api_key: str | None = None,
     ) -> None:
@@ -29,7 +32,7 @@ class ImageGenerationTool(Tool):
         self.description = (
             "Generate an image based on a text description. "
             "Use this tool to create a visual clue for guessers. "
-            "Returns the URL of the generated image."
+            "Returns the local file path of the generated image."
         )
         self.parameters = {
             "type": "object",
@@ -44,22 +47,35 @@ class ImageGenerationTool(Tool):
             "required": ["prompt"],
         }
         self.model = model
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-        )
+
+        # Initialize official Gemini client
+        http_options = {"base_url": base_url} if base_url else None
+        self.client = genai.Client(api_key=api_key, http_options=http_options)
 
     async def execute(self, **kwargs: Any) -> ToolResult:
         prompt = kwargs.get("prompt", "")
         logger.info(f"Generating image with prompt: {prompt[:80]}...")
         try:
-            response = await self.client.images.generate(
+            response = await self.client.aio.models.generate_images(
                 model=self.model,
                 prompt=prompt,
-                n=1,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type="image/jpeg",
+                ),
             )
-            image_url = response.data[0].url or ""
-            logger.info(f"Image generated: {image_url[:80]}...")
+
+            image_bytes = response.generated_images[0].image.image_bytes
+
+            # Save the image locally to prevent context bloat with base64
+            os.makedirs("outputs", exist_ok=True)
+            filename = f"outputs/image_{uuid.uuid4().hex[:8]}.jpeg"
+            with open(filename, "wb") as f:
+                f.write(image_bytes)
+
+            image_url = filename
+
+            logger.info(f"Image generated and saved to: {image_url}")
             return ToolResult(
                 content=f"Image generated successfully: {image_url}",
                 metadata={"image_url": image_url, "prompt": prompt},
