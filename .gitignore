@@ -1,6 +1,3 @@
-*.pdf
-launch.sh
-
 # Python
 __pycache__/
 *.py[cod]
@@ -16,6 +13,9 @@ build/
 # IDE
 .vscode/
 .claude/
+.DS_Store
 
 # Logs
 logs/
+
+*.pdf

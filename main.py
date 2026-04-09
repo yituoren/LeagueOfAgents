@@ -9,11 +9,12 @@ from pathlib import Path
 
 import yaml
 
-from games.draw_and_guess.agents import DrawerAgent, GuesserAgent
 from games.draw_and_guess.engine import DrawAndGuessEngine
+from games.draw_and_guess.tools import ImageGenerationTool
 from league.agent.llm_agent import LLMAgent
 from league.llm.client import LLMClient
 from league.logger.game_logger import GameLogger
+from league.tools.base import Tool
 from league.types import GameConfig, Player
 
 
@@ -40,30 +41,60 @@ def setup_logging(config: dict) -> None:
     )
 
 
-async def run_draw_and_guess(config: dict) -> None:
-    """Run the Draw and Guess game"""
-    llm_config = config.get("llm", {})
-    game_settings = config.get("game", {})
-    player_configs = config.get("players", [])
-    dg_config = config.get("draw_and_guess", {})
-
-    # Initialize LLM Client
-    llm_client = LLMClient(
+def create_llm_client(llm_config: dict) -> LLMClient:
+    """Create an LLMClient from config dict"""
+    return LLMClient(
         model=llm_config.get("model", "gpt-4o-mini"),
         base_url=llm_config.get("base_url"),
+        api_key=llm_config.get("api_key"),
         temperature=llm_config.get("temperature", 0.7),
         max_tokens=llm_config.get("max_tokens", 2048),
     )
 
+
+def create_tools(config: dict) -> list[Tool]:
+    """Create tool instances from config"""
+    tools_config = config.get("tools", {})
+    tools: list[Tool] = []
+
+    img_config = tools_config.get("image_generation")
+    if img_config:
+        tools.append(
+            ImageGenerationTool(
+                model=img_config.get("model", "nano-banana"),
+                base_url=img_config.get("base_url"),
+                api_key=img_config.get("api_key"),
+            )
+        )
+
+    return tools
+
+
+async def run_draw_and_guess(config: dict) -> None:
+    """Run the Draw and Guess game"""
+    global_llm_config = config.get("llm", {})
+    game_settings = config.get("game", {})
+    player_configs = config.get("players", [])
+    dg_config = config.get("draw_and_guess", {})
+
+    # Create tools
+    tools = create_tools(config)
+
     # Initialize Game Logger
     game_logger = GameLogger(game_name="draw_and_guess")
 
-    # Create Players
+    # Create Players (each can have independent LLM config)
     players: list[Player] = []
     for i, pc in enumerate(player_configs):
         p_name = pc.get("name", f"Player_{i}")
-        # Each player uses a general LLMAgent, specific roles are handled by the engine logic
-        agent = LLMAgent(name=p_name, llm_client=llm_client)
+
+        # Per-player LLM: merge global config with player-specific overrides
+        player_llm_config = {**global_llm_config}
+        if "llm" in pc and pc["llm"]:
+            player_llm_config.update(pc["llm"])
+
+        llm_client = create_llm_client(player_llm_config)
+        agent = LLMAgent(name=p_name, llm_client=llm_client, tools=tools)
         players.append(
             Player(
                 player_id=f"p{i}",

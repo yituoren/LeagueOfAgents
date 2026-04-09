@@ -7,22 +7,25 @@ import logging
 import re
 
 from league.llm.client import LLMClient
+from league.prompts.referee import REFEREE_BASE_PROMPT
 from league.referee.base import Referee
 from league.types import JudgeContext, JudgeResult
 
 logger = logging.getLogger(__name__)
 
-JUDGE_SYSTEM_PROMPT = """\
-You are a game referee. You need to determine if each player's answer is correct based on the given target answer and the players' responses.
+JUDGE_GAME_PROMPT = """\
+You need to determine if each player's answer is correct based on the given target answer.
 Judgment Rule: Any response that is semantically consistent with the target is considered correct (synonyms and near-synonymous expressions are acceptable).
 
-Please return the results in JSON format:
+Return your judgment in <output> tags as JSON:
 {
   "judgements": [
     {"player_id": "...", "correct": true/false, "reason": "..."}
   ]
 }
 """
+
+JUDGE_SYSTEM_PROMPT = f"{REFEREE_BASE_PROMPT}\n---\n\n{JUDGE_GAME_PROMPT}"
 
 
 class LLMReferee(Referee):
@@ -51,11 +54,14 @@ class LLMReferee(Referee):
             system=JUDGE_SYSTEM_PROMPT,
         )
 
+        # Extract <output> content if present
+        output_match = re.search(r"<output>(.*?)</output>", response, re.DOTALL)
+        json_source = output_match.group(1) if output_match else response
+
         # Parse JSON response
         try:
-            # Simple JSON extraction from markdown if necessary
-            json_match = re.search(r"(\{.*\})", response, re.DOTALL)
-            json_str = json_match.group(1) if json_match else response
+            json_match = re.search(r"(\{.*\})", json_source, re.DOTALL)
+            json_str = json_match.group(1) if json_match else json_source
             data = json.loads(json_str)
 
             correct_players = []
@@ -78,7 +84,6 @@ class LLMReferee(Referee):
 
         except Exception as e:
             logger.error(f"Error parsing LLM Referee response: {e}. Raw: {response}")
-            # Fallback: Treat all as incorrect
             return JudgeResult(
                 correct_players=[],
                 scores={a.player_id: 0.0 for a in context.actions},

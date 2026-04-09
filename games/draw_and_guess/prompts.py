@@ -1,41 +1,51 @@
-"""Draw and Guess Prompt Templates"""
+"""Draw and Guess Game-Specific Prompt Templates
+
+These are appended after the general AGENT_BASE_PROMPT which already defines
+the <thought>/<memory>/<output> tag format and tool calling rules.
+"""
 
 DRAWER_SYSTEM_PROMPT = """\
-You are the Drawer in the "Draw and Guess" game. You need to use text descriptions to help other players guess the target word.
+## Your Game: Draw and Guess
 
-Rules:
-- You cannot directly say the target word or any of its synonyms.
-- You should imply the target word by describing a scene or image.
-- A good strategy is to make most, but not all, players guess correctly.
+You are the **Drawer**. Your goal is to create visual clues that help other players guess the target word.
 
-Please plan your strategy within <thought> tags, and then provide your scene description within <output> tags.
+### Game Rules
+- You CANNOT directly say the target word or any of its synonyms in your text output.
+- You MUST use the `generate_image` tool to create an image as your primary visual clue.
+- You may provide a brief supplementary text hint alongside the image, but it must not give away the answer directly.
+
+### Strategy
+- If everyone guesses correctly, you get **0 points** (clue was too easy).
+- You want *most but not all* players to guess correctly to maximize your score.
+- Craft your image prompt with strategic ambiguity — make it interpretable but not trivial.
 """
 
 GUESSER_SYSTEM_PROMPT = """\
-You are a Guesser in the "Draw and Guess" game. You need to guess the target word based on the Drawer's description.
+## Your Game: Draw and Guess
 
-Rules:
-- Carefully analyze the clues in the description.
-- Provide the word or phrase you think is most likely to be the target.
-- Only answer with a single word or short phrase.
+You are a **Guesser**. Your goal is to guess the target word based on the Drawer's clues.
 
-Please analyze the clues within <thought> tags, and then provide your guess within <output> tags.
+### Game Rules
+- Carefully analyze all clues provided (images and/or text).
+- Your <output> must contain only your guess — a single word or short phrase.
+- Do not explain your reasoning in <output>; use <thought> for that.
 """
 
 DRAWER_ACTION_PROMPT = """\
-The target word is: 【{target_word}】
+The target word is: [{target_word}]
 There are currently {num_guessers} guessers in the game.
 
-【Scoring Rules】:
+[Scoring Rules]:
 - You get 1 point for each person who guesses correctly.
-- Warning: If everyone guesses correctly, you will be judged as "clues too simple" and receive 0 points for this round!
+- Warning: If everyone guesses correctly, you receive 0 points for this round!
 
-Please provide your scene description.
+Use the generate_image tool to create your visual clue, then provide any additional text hints in <output>.
 """
 
 GUESSER_ACTION_PROMPT = """\
-The Drawer provided the following description:
-{description}
+The Drawer provided the following clues:
 
-Please guess the target word. Only provide your answer.
+{description}
+{image_info}
+Guess the target word. Provide only your answer in <output>.
 """

@@ -56,7 +56,7 @@ class DrawAndGuessEngine(GameEngine):
 
     Game: N Rounds (Each player takes turns as the Drawer)
       Round (Player X draws):
-        Step 1 [sequential]: Query Drawer -> Return scene description
+        Step 1 [sequential]: Query Drawer -> Generate image + description
         Step 2 [concurrent]: Query Guessers -> Guess simultaneously
         Step 3 [internal]: Referee judgment + Scoring
     """
@@ -67,6 +67,7 @@ class DrawAndGuessEngine(GameEngine):
         self.current_drawer_idx = 0
         self.current_target_word = ""
         self.current_description = ""
+        self.current_image_url = ""
         self.phase = GamePhase.DRAWING
         self.round_scores = {}
 
@@ -109,6 +110,7 @@ class DrawAndGuessEngine(GameEngine):
             random.shuffle(self.word_pool)
         self.current_target_word = self.word_pool.pop()
         self.current_description = ""
+        self.current_image_url = ""
         self.round_scores = {p.player_id: 0.0 for p in self.players}
 
         # Update roles
@@ -161,7 +163,15 @@ class DrawAndGuessEngine(GameEngine):
                 action_prompt=prompt,
             )
         else:
-            prompt = GUESSER_ACTION_PROMPT.format(description=self.current_description)
+            # Build image info for guesser
+            image_info = ""
+            if self.current_image_url:
+                image_info = f"[Image clue]: {self.current_image_url}\n"
+
+            prompt = GUESSER_ACTION_PROMPT.format(
+                description=self.current_description,
+                image_info=image_info,
+            )
             return Observation(
                 round_num=self.current_round,
                 step_num=self.current_step,
@@ -169,6 +179,7 @@ class DrawAndGuessEngine(GameEngine):
                 visible_state={
                     "phase": "guessing",
                     "description": self.current_description,
+                    "image_url": self.current_image_url,
                 },
                 action_prompt=prompt,
             )
@@ -184,9 +195,20 @@ class DrawAndGuessEngine(GameEngine):
         if self.phase == GamePhase.DRAWING:
             if actions:
                 self.current_description = actions[0].action.content
+
+                # Extract image URL from tool results if available
+                tool_results = actions[0].action.metadata.get("tool_results", [])
+                for tr in tool_results:
+                    image_url = tr.get("metadata", {}).get("image_url")
+                    if image_url:
+                        self.current_image_url = image_url
+                        break
+
                 logger.info(
                     f"Drawer provided description: {self.current_description[:50]}..."
                 )
+                if self.current_image_url:
+                    logger.info(f"Drawer generated image: {self.current_image_url[:80]}...")
 
         elif self.phase == GamePhase.GUESSING:
             # Process guesses

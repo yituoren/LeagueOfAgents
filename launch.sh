@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ========== League of Agents 启动脚本 ==========
-# 在此填入你的 API Key
-export OPENAI_API_KEY="your-api-key"
+# API key for backup
+export OPENAI_API_KEY="AIzaSyCGy_LFjtEe5iJXmdJV9_hh-nlnGGRDWZ8"
 
-# 启动游戏
+# Launch the game
 python main.py "${1:-config/default.yaml}"

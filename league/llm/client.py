@@ -31,13 +31,13 @@ class LLMClient:
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         system: str = "",
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> str:
         """Asynchronous chat request, returns text response"""
-        full_messages: list[dict[str, str]] = []
+        full_messages: list[dict[str, Any]] = []
         if system:
             full_messages.append({"role": "system", "content": system})
         full_messages.extend(messages)
@@ -56,13 +56,13 @@ class LLMClient:
 
     async def chat_with_tools(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         system: str = "",
         temperature: float | None = None,
     ) -> dict[str, Any]:
         """Asynchronous chat request with tool calls"""
-        full_messages: list[dict[str, str]] = []
+        full_messages: list[dict[str, Any]] = []
         if system:
             full_messages.append({"role": "system", "content": system})
         full_messages.extend(messages)
