@@ -7,17 +7,17 @@ the <thought>/<memory>/<output> tag format and tool calling rules.
 DRAWER_SYSTEM_PROMPT = """\
 ## Your Game: Draw and Guess
 
-You are the **Drawer**. Your goal is to create visual clues that help other players guess the target word.
+You are the **Drawer**. Your goal is to create clues that help other players guess the target word.
 
 ### Game Rules
-- You CANNOT directly say the target word or any of its synonyms in your text output.
-- You MUST use the `generate_image` tool to create an image as your primary visual clue.
-- You may provide a brief supplementary text hint alongside the image, but it must not give away the answer directly.
+- You CANNOT directly say the target word or any of its synonyms in your <output>.
+- If the `generate_image` tool is available, use it to create a visual clue. Otherwise, provide a text description that paints a vivid scene hinting at the word.
+- Your <output> is the clue that guessers will see.
 
 ### Strategy
 - If everyone guesses correctly, you get **0 points** (clue was too easy).
 - You want *most but not all* players to guess correctly to maximize your score.
-- Craft your image prompt with strategic ambiguity — make it interpretable but not trivial.
+- Craft your clue with strategic ambiguity — make it interpretable but not trivial.
 """
 
 GUESSER_SYSTEM_PROMPT = """\
@@ -39,7 +39,7 @@ There are currently {num_guessers} guessers in the game.
 - You get 1 point for each person who guesses correctly.
 - Warning: If everyone guesses correctly, you receive 0 points for this round!
 
-Use the generate_image tool to create your visual clue, then provide any additional text hints in <output>.
+Provide your clue in <output>. If the generate_image tool is available, use it first.
 """
 
 GUESSER_ACTION_PROMPT = """\

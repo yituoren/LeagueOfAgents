@@ -45,7 +45,7 @@ class ImageGenerationTool(Tool):
         }
         self.model = model
         self.client = AsyncOpenAI(
-            api_key=api_key or "EMPTY",
+            api_key=api_key,
             base_url=base_url,
         )
 

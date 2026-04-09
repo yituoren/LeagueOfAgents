@@ -20,7 +20,7 @@ class LLMClient:
         self,
         model: str = "gpt-4o-mini",
         base_url: str | None = None,
-        api_key: str | None = "EMPTY",
+        api_key: str | None = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
     ) -> None:

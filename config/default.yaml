@@ -2,35 +2,26 @@
 
 # Global LLM config (used as default for all players)
 llm:
-  model: "gpt-4o-mini"
-  base_url: null
-  api_key: "AIzaSyCGy_LFjtEe5iJXmdJV9_hh-nlnGGRDWZ8" # Falls back to OPENAI_API_KEY env var if null
+  model: "gemini-2.5-flash-lite"
+  base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  # api_key loaded from .env (LLM_API_KEY)
   temperature: 0.7
   max_tokens: 2048
 
 game:
   name: "draw_and_guess"
-  num_rounds: 4
+  num_rounds: 2
   max_steps_per_round: 10
-  timeout_seconds: 30.0
+  timeout_seconds: 60.0
 
 # Each player can override global llm config with its own llm section
 players:
   - name: "Alice"
-    # llm:               # Uncomment to override for this player
-    #   model: "gpt-4o"
-    #   base_url: null
-    #   api_key: null
   - name: "Bob"
   - name: "Charlie"
-  - name: "Diana"
 
-# Tool configurations
-tools:
-  image_generation:
-    model: "nano-banana"
-    base_url: null
-    api_key: null
+# Tool configurations (image_generation disabled for now — no endpoint available)
+tools: {}
 
 # Game-specific settings
 draw_and_guess:
@@ -39,16 +30,11 @@ draw_and_guess:
     - "Sun"
     - "Moon"
     - "Cat"
-    - "Airplane"
-    - "Snowflake"
     - "Guitar"
     - "Castle"
     - "Rainbow"
     - "Robot"
-    - "Volcano"
-    - "Diamond"
     - "Butterfly"
-    - "Telescope"
     - "Lighthouse"
 
 logging:

@@ -7,7 +7,7 @@
 
 ## 📖 Project Introduction
 
-**League of Agents** is a multi-agent gaming framework. It encapsulates Large Language Models (LLMs) into independent agents and lets them compete in strategic games like *Draw and Guess*, *Werewolf*, and *Undercover*. 
+**League of Agents** is a multi-agent gaming framework. It encapsulates Large Language Models (LLMs) into independent agents and lets them compete in strategic games like *Draw and Guess*, *Werewolf*, and *Undercover*.
 
 This provides an intuitive and entertaining way to evaluate models' logical reasoning, strategic play, long-term memory, and instruction-following abilities in complex, dynamic, and Partially Observable Markov Decision Process (POMDP) scenarios.
 
@@ -49,6 +49,26 @@ execute_step()
   └→ step_transition()             # Advance phase/counters
 ```
 
+### 🤖 Agent Architecture
+
+Each agent follows a **ReAct** (Reason → Act → Observe) loop within a single turn:
+
+```text
+act(observation)
+  └→ while True:
+       ├→ LLM outputs <thought> (private reasoning)
+       ├→ LLM calls tool? → execute tool → observe result → loop back
+       └→ LLM outputs <output> (final action) → return
+```
+
+Agents structure their responses using XML tags:
+
+| Tag | Required | Description |
+| :--- | :--- | :--- |
+| `<thought>` | Every response | Private reasoning, never revealed to other players |
+| `<memory>` | Optional | Self-selected notes saved for future turns (agent-controlled memory) |
+| `<output>` | Final response only | The action submitted to the game engine |
+
 ### ✨ Framework Features
 
 | Feature | Description |
@@ -56,6 +76,8 @@ execute_step()
 | ⚙️ **Engine-Driven** | **Push Mode**: The Engine controls the flow, distributes observations, and collects actions. Agents simply implement a single `act()` interface. |
 | 🛡️ **Information Isolation** | Each Agent only sees the `Observation` explicitly built for it, strictly mimicking a human's partial perspective. |
 | ⚡ **Fully Asynchronous** | All Engine and Agent methods are `async`, natively supporting concurrent queries, API calls, and real-time interaction. |
+| 🧠 **Agent-Controlled Memory** | Agents decide what to remember via `<memory>` tags — no hardcoded injection. |
+| 🔧 **Tool Calling (ReAct)** | Agents can call tools (e.g., image generation) in a multi-step loop within a single turn. |
 | 🛠️ **Extensible Templates** | `run()` and `execute_step()` provide default flow skeletons; subclassing a new game only requires overriding the necessary parts. |
 
 ---
@@ -66,13 +88,18 @@ execute_step()
 LeagueOfAgents/
 ├── league/                    # 🧠 Core Framework
 │   ├── engine/base.py         # GameEngine abstract base class
-│   ├── agent/                 
+│   ├── agent/
 │   │   ├── base.py            # Agent abstract base class
-│   │   ├── llm_agent.py       # LLM-driven Agent implementation
+│   │   ├── llm_agent.py       # LLM-driven Agent (ReAct + memory)
 │   │   └── memory.py          # Short and long-term memory management
-│   ├── referee/               
+│   ├── referee/
 │   │   ├── base.py            # Referee abstract base class
 │   │   └── llm_referee.py     # LLM-based semantic referee
+│   ├── prompts/               # General prompt templates
+│   │   ├── agent.py           # Base prompt for game-playing agents
+│   │   └── referee.py         # Base prompt for referees
+│   ├── tools/
+│   │   └── base.py            # Tool abstract base class
 │   ├── llm/client.py          # Unified async LLM client (OpenAI SDK compatible)
 │   ├── logger/game_logger.py  # Structured game logs (JSON export)
 │   └── types.py               # Common type definitions
@@ -81,41 +108,75 @@ LeagueOfAgents/
 │       ├── engine.py          # Game-specific engine
 │       ├── agents.py          # DrawerAgent / GuesserAgent
 │       ├── referee.py         # Game scoring referee
-│       └── prompts.py         # Specialized prompt templates
+│       ├── tools.py           # ImageGenerationTool
+│       └── prompts.py         # Game-specific prompt templates
 ├── config/default.yaml        # ⚙️ Default configuration
+├── .env.example               # 🔑 API key template
 ├── doc/                       # 📚 Documentation
 │   ├── architecture.md        # Architecture details
 │   └── api_reference.md       # API reference
-└── main.py                    # 🚀 CLI entry point
+├── launch.sh                  # 🚀 Launch script
+└── main.py                    # CLI entry point
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Environment Preparation
-
-Ensure you have Python 3.11+ installed.
+### 1. Environment Setup
 
 ```bash
-# Install dependencies
+conda create -n league python=3.11 -y
+conda activate league
 pip install -r requirements.txt
 ```
 
-### 2. Configuration
+### 2. Configure API Keys
 
-Edit `config/default.yaml` to adjust parameters such as the LLM model, API base URL, number of players, and word pools.
-
-### 3. Run the Game
-
-Ensure your API Key is configured in your environment or passed to the LLM client, then run:
+Copy the template and fill in your keys:
 
 ```bash
-# Using default configuration
-python main.py
+cp .env.example .env
+```
 
-# Using custom configuration
-python main.py config/custom.yaml
+Edit `.env`:
+
+```bash
+# Default key for all players
+LLM_API_KEY=your-api-key
+
+# Per-player keys (optional, name uppercased, spaces → underscores)
+PLAYER_ALICE_API_KEY=sk-alice-key
+PLAYER_BOB_API_KEY=sk-bob-key
+
+# Image generation key (optional, falls back to LLM_API_KEY)
+IMAGE_GEN_API_KEY=your-image-gen-key
+```
+
+Key resolution order: `PLAYER_{NAME}_API_KEY` → `LLM_API_KEY` → `OPENAI_API_KEY`
+
+### 3. Configure Game
+
+Edit `config/default.yaml` to set model, base URL, players, and game parameters. Each player can use a different model/provider:
+
+```yaml
+llm:
+  model: "gemini-2.5-flash-lite"
+  base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+players:
+  - name: "Alice"
+  - name: "Bob"
+    llm:                          # Override for this player
+      model: "gpt-4o-mini"
+      base_url: null              # Uses default OpenAI endpoint
+```
+
+### 4. Run
+
+```bash
+bash launch.sh                      # Default config
+bash launch.sh config/custom.yaml   # Custom config
 ```
 
 ---

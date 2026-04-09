@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 from games.draw_and_guess.engine import DrawAndGuessEngine
 from games.draw_and_guess.tools import ImageGenerationTool
@@ -41,12 +43,29 @@ def setup_logging(config: dict) -> None:
     )
 
 
-def create_llm_client(llm_config: dict) -> LLMClient:
-    """Create an LLMClient from config dict"""
+def resolve_api_key(player_name: str | None = None) -> str | None:
+    """Resolve API key with fallback chain:
+
+    PLAYER_{NAME}_API_KEY > LLM_API_KEY > OPENAI_API_KEY
+    """
+    if player_name:
+        env_name = f"PLAYER_{player_name.upper().replace(' ', '_')}_API_KEY"
+        player_key = os.getenv(env_name)
+        if player_key:
+            return player_key
+    return os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+
+
+def create_llm_client(llm_config: dict, player_name: str | None = None) -> LLMClient:
+    """Create an LLMClient from config dict
+
+    api_key resolution: config > PLAYER_{NAME}_API_KEY > LLM_API_KEY > OPENAI_API_KEY
+    """
+    api_key = llm_config.get("api_key") or resolve_api_key(player_name)
     return LLMClient(
         model=llm_config.get("model", "gpt-4o-mini"),
         base_url=llm_config.get("base_url"),
-        api_key=llm_config.get("api_key"),
+        api_key=api_key,
         temperature=llm_config.get("temperature", 0.7),
         max_tokens=llm_config.get("max_tokens", 2048),
     )
@@ -59,11 +78,17 @@ def create_tools(config: dict) -> list[Tool]:
 
     img_config = tools_config.get("image_generation")
     if img_config:
+        api_key = (
+            img_config.get("api_key")
+            or os.getenv("IMAGE_GEN_API_KEY")
+            or os.getenv("LLM_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+        )
         tools.append(
             ImageGenerationTool(
                 model=img_config.get("model", "nano-banana"),
                 base_url=img_config.get("base_url"),
-                api_key=img_config.get("api_key"),
+                api_key=api_key,
             )
         )
 
@@ -93,7 +118,7 @@ async def run_draw_and_guess(config: dict) -> None:
         if "llm" in pc and pc["llm"]:
             player_llm_config.update(pc["llm"])
 
-        llm_client = create_llm_client(player_llm_config)
+        llm_client = create_llm_client(player_llm_config, player_name=p_name)
         agent = LLMAgent(name=p_name, llm_client=llm_client, tools=tools)
         players.append(
             Player(
@@ -135,6 +160,7 @@ async def run_draw_and_guess(config: dict) -> None:
 
 
 async def main() -> None:
+    load_dotenv()
     config_path = sys.argv[1] if len(sys.argv) > 1 else "config/default.yaml"
     config = load_config(config_path)
     setup_logging(config)
