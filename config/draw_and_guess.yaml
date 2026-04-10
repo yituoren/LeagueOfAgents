@@ -3,7 +3,7 @@
 
 # Global LLM config (default for all players and referee)
 llm:
-  model: "gemini-2.5-pro"
+  model: "gemini-3.1-pro-preview"
   base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
   # api_key loaded from .env (LLM_API_KEY)
   temperature: 0.7

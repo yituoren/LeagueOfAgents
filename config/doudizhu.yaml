@@ -1,0 +1,24 @@
+# Dou Dizhu (Fight the Landlord) Configuration
+
+llm:
+  model: "gemini-3.1-pro-preview"
+  base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  temperature: 0.7
+  max_tokens: 16384  # reasoning models (3.1-pro) need large budget — reasoning tokens count toward this
+
+game:
+  target: "games.doudizhu" # module path → auto-resolves GameEngine
+  num_rounds: 1
+  max_steps_per_round: 200 # one hand can have many plays
+  timeout_seconds: 60.0
+
+  players:
+    - name: "Alice"
+    - name: "Bob"
+    - name: "Charlie"
+
+  # No tools or referee needed — the engine handles all validation internally.
+
+logging:
+  level: "INFO"
+  output_dir: "logs"
